@@ -1,0 +1,18 @@
+#!/bin/bash
+# Example configuration file for afetch
+# Copy this file to afetch.conf and modify the values below
+
+# GitHub API configuration
+# Generate a personal access token at https://github.com/settings/tokens
+# and replace the value below with your token
+readonly GITHUB_TOKEN="your_github_token_here"
+
+# Repository owner (username or organization name)
+readonly REPO_OWNER="your_repo_owner_here"
+
+# Repository name
+readonly REPO_NAME="your_repo_name_here"
+
+# Asset mask (glob pattern to match asset filenames)
+# Example: "*.zip" to match all zip files
+readonly ASSET_MASK="*.your_extension_here"

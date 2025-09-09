@@ -422,7 +422,10 @@ func fetchReleases() tea.Msg {
 	}
 
 	req.Header.Set("Accept", "application/vnd.github+json")
-	req.Header.Set("Authorization", "Bearer "+config.GITHUB_TOKEN)
+	// Only add authorization header if token is provided
+	if config.GITHUB_TOKEN != "" {
+		req.Header.Set("Authorization", "Bearer "+config.GITHUB_TOKEN)
+	}
 	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
 
 	resp, err := client.Do(req)
@@ -593,7 +596,10 @@ func downloadAsset(asset AssetInfo) tea.Cmd {
 
 		// Set headers
 		req.Header.Set("Accept", "application/octet-stream")
-		req.Header.Set("Authorization", "Bearer "+config.GITHUB_TOKEN)
+		// Only add authorization header if token is provided
+		if config.GITHUB_TOKEN != "" {
+			req.Header.Set("Authorization", "Bearer "+config.GITHUB_TOKEN)
+		}
 		req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
 
 		// Execute request

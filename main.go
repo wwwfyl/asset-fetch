@@ -684,10 +684,6 @@ func loadConfig() (*Config, error) {
 			continue
 		}
 
-		if strings.HasPrefix(line, "readonly ") {
-			line = strings.TrimPrefix(line, "readonly ")
-		}
-
 		parts := strings.SplitN(line, "=", 2)
 		if len(parts) != 2 {
 			continue

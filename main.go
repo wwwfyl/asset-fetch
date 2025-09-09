@@ -1,21 +1,29 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/charmbracelet/bubbletea"
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
+
+// Global context and cancel function for download cancellation
+var downloadContext context.Context
+var downloadCancel context.CancelFunc
+
+// Global variable for download progress
+var downloadProgress int64
+var downloadProgressMutex sync.Mutex
 
 // Config structure for storing configuration
 type Config struct {
@@ -66,18 +74,41 @@ type DownloadState struct {
 	mutex         sync.Mutex
 }
 
+// ProgressReader structure for tracking download progress
+type ProgressReader struct {
+	reader     io.Reader
+	total      int64
+	downloaded int64
+	onProgress func(downloaded, total int64)
+}
+
+// Read implements io.Reader interface
+func (pr *ProgressReader) Read(p []byte) (int, error) {
+	n, err := pr.reader.Read(p)
+	pr.downloaded += int64(n)
+
+	// Call onProgress callback if provided
+	if pr.onProgress != nil {
+		pr.onProgress(pr.downloaded, pr.total)
+	}
+
+	return n, err
+}
+
 // Model structure for bubbletea
 type model struct {
-	assets        []AssetInfo
-	cursor        int
-	quitting      bool
-	loading       bool
-	errorMsg      string
-	downloading   bool
-	downloadMsg   string
-	confirming    bool
-	confirmAsset  *AssetInfo
-	downloadState *DownloadState
+	assets           []AssetInfo
+	cursor           int
+	quitting         bool
+	loading          bool
+	errorMsg         string
+	downloading      bool
+	downloadMsg      string
+	confirming       bool
+	confirmAsset     *AssetInfo
+	downloadState    *DownloadState
+	downloadAsset    *AssetInfo
+	downloadProgress int64
 }
 
 // Init bubbletea initialization
@@ -97,7 +128,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.confirming = false
 				asset := *m.confirmAsset
 				m.confirmAsset = nil
-				return m, downloadAsset(asset)
+				return m, tea.Batch(
+					func() tea.Msg {
+						return startDownloadProgressMsg{asset: asset}
+					},
+					downloadAsset(asset),
+				)
 			case "n", "N", "esc", "q", "ctrl+c":
 				// Cancel download
 				m.confirming = false
@@ -112,8 +148,18 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Regular key handling
 		switch msg.String() {
 		case "ctrl+c", "q":
-			m.quitting = true
-			return m, tea.Quit
+			if m.downloading {
+				// Cancel download
+				if downloadCancel != nil {
+					downloadCancel()
+				}
+				return m, func() tea.Msg {
+					return cancelDownloadMsg{}
+				}
+			} else {
+				m.quitting = true
+				return m, tea.Quit
+			}
 		case "up", "k":
 			if m.cursor > 0 {
 				m.cursor--
@@ -145,6 +191,42 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Set confirmation state
 		m.confirming = true
 		m.confirmAsset = &asset
+		return m, nil
+	case startDownloadProgressMsg:
+		// Start download progress updates
+		m.downloadAsset = &msg.asset
+		m.downloading = true
+		// Start a ticker to send progress updates
+		return m, tea.Tick(time.Second, func(t time.Time) tea.Msg {
+			if m.downloadAsset != nil {
+				return updateDownloadProgressMsg{asset: *m.downloadAsset}
+			}
+			return nil
+		})
+	case updateDownloadProgressMsg:
+		// Update download progress
+		if m.downloadAsset != nil {
+			// Get actual progress from global variable
+			downloadProgressMutex.Lock()
+			progress := downloadProgress
+			downloadProgressMutex.Unlock()
+
+			// Send progress update
+			return m, tea.Batch(
+				func() tea.Msg {
+					return downloadProgressUpdateMsg{
+						totalBytes:    progress,
+						expectedBytes: m.downloadAsset.Size,
+					}
+				},
+				tea.Tick(time.Second, func(t time.Time) tea.Msg {
+					if m.downloadAsset != nil {
+						return updateDownloadProgressMsg{asset: *m.downloadAsset}
+					}
+					return nil
+				}),
+			)
+		}
 		return m, nil
 	case downloadProgressMsg:
 		m.downloading = true
@@ -179,11 +261,17 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	case downloadCompleteMsg:
 		m.downloading = false
+		m.downloadAsset = nil
 		fmt.Printf("File downloaded successfully: %s\n", string(msg))
 		return m, tea.Quit
 	case downloadErrorMsg:
 		m.downloading = false
+		m.downloadAsset = nil
 		m.errorMsg = string(msg)
+	case cancelDownloadMsg:
+		m.downloading = false
+		m.downloadAsset = nil
+		m.errorMsg = "Download cancelled by user"
 	}
 
 	return m, nil
@@ -272,13 +360,21 @@ func (m model) View() string {
 	s += "\nPress '↑/↓' or 'j/k' to navigate, 'enter' to select, 'q' or 'ctrl+c' to quit\n"
 
 	if m.downloading {
-		s += fmt.Sprintf("\n%s\n", m.downloadMsg)
+		// Display download progress
+		if m.downloadAsset != nil {
+			s += fmt.Sprintf("\nDownloading %s...\n", m.downloadAsset.Name)
+		}
 
 		// Display progress information if we have download state
 		if m.downloadState != nil {
 			s += fmt.Sprintf("Downloaded: %s / %s\n",
 				formatSize(m.downloadState.totalBytes),
 				formatSize(m.downloadState.expectedBytes))
+		} else if m.downloadAsset != nil {
+			// Display initial progress information
+			s += fmt.Sprintf("Downloaded: %s / %s\n",
+				formatSize(0),
+				formatSize(m.downloadAsset.Size))
 		}
 	}
 
@@ -292,11 +388,22 @@ type downloadConfirmMsg AssetInfo
 type downloadProgressMsg string
 type downloadCompleteMsg string
 type downloadErrorMsg string
+type cancelDownloadMsg struct{}
+
+// startDownloadProgressMsg message to start download progress updates
+type startDownloadProgressMsg struct {
+	asset AssetInfo
+}
 
 // downloadProgressUpdateMsg message for updating download progress
 type downloadProgressUpdateMsg struct {
 	totalBytes    int64
 	expectedBytes int64
+}
+
+// updateDownloadProgressMsg message to update download progress
+type updateDownloadProgressMsg struct {
+	asset AssetInfo
 }
 
 // fetchReleases get list of releases
@@ -467,7 +574,7 @@ func confirmDownload(asset AssetInfo) tea.Cmd {
 	}
 }
 
-// downloadAsset download artifact using curl
+// downloadAsset download artifact using http.Client
 func downloadAsset(asset AssetInfo) tea.Cmd {
 	return func() tea.Msg {
 		config, err := loadConfig()
@@ -475,29 +582,67 @@ func downloadAsset(asset AssetInfo) tea.Cmd {
 			return downloadErrorMsg(err.Error())
 		}
 
-		// Prepare curl command with parameters similar to afetch.sh
-		curlArgs := []string{
-			"-L",           // Follow redirects
-			"--retry", "5", // Retry up to 5 times
-			"-H", "Accept: application/octet-stream",
-			"-H", "Authorization: Bearer " + config.GITHUB_TOKEN,
-			"-H", "X-GitHub-Api-Version: 2022-11-28",
-			asset.URL,              // Asset URL
-			"--output", asset.Name, // Output file name
-			"--progress-bar", // Show progress bar
+		// Create HTTP client with context
+		client := &http.Client{}
+
+		// Create request with context
+		req, err := http.NewRequestWithContext(downloadContext, "GET", asset.URL, nil)
+		if err != nil {
+			return downloadErrorMsg(fmt.Sprintf("Error creating request: %v", err))
 		}
 
-		// Execute curl command
-		cmd := exec.Command("curl", curlArgs...)
+		// Set headers
+		req.Header.Set("Accept", "application/octet-stream")
+		req.Header.Set("Authorization", "Bearer "+config.GITHUB_TOKEN)
+		req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
 
-		// Connect stdout and stderr to see progress
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
-
-		// Run the command
-		err = cmd.Run()
+		// Execute request
+		resp, err := client.Do(req)
 		if err != nil {
+			// Check if the error is due to context cancellation
+			if downloadContext.Err() == context.Canceled {
+				return downloadErrorMsg("Download cancelled by user")
+			}
 			return downloadErrorMsg(fmt.Sprintf("Error downloading file: %v", err))
+		}
+		defer resp.Body.Close()
+
+		// Check response status
+		if resp.StatusCode != http.StatusOK {
+			return downloadErrorMsg(fmt.Sprintf("HTTP error: %d", resp.StatusCode))
+		}
+
+		// Create output file
+		out, err := os.Create(asset.Name)
+		if err != nil {
+			return downloadErrorMsg(fmt.Sprintf("Error creating file: %v", err))
+		}
+		defer out.Close()
+
+		// Create a progress reader
+		progressReader := &ProgressReader{
+			reader: resp.Body,
+			total:  asset.Size,
+			onProgress: func(downloaded, total int64) {
+				// Update global progress variable
+				downloadProgressMutex.Lock()
+				downloadProgress = downloaded
+				downloadProgressMutex.Unlock()
+			},
+		}
+
+		// Copy response body to file
+		_, err = io.Copy(out, progressReader)
+		if err != nil {
+			// Check if the error is due to context cancellation
+			if downloadContext.Err() == context.Canceled {
+				// Clean up partial file
+				os.Remove(asset.Name)
+				return downloadErrorMsg("Download cancelled by user")
+			}
+			// Clean up partial file
+			os.Remove(asset.Name)
+			return downloadErrorMsg(fmt.Sprintf("Error writing file: %v", err))
 		}
 
 		return downloadCompleteMsg(asset.Name)
@@ -572,7 +717,11 @@ func loadConfig() (*Config, error) {
 }
 
 func main() {
-	// Model initialization
+	// Create context with cancel function
+	downloadContext, downloadCancel = context.WithCancel(context.Background())
+	defer downloadCancel()
+
+	// Pass context to model
 	m := model{
 		assets:  []AssetInfo{},
 		loading: true,
@@ -583,5 +732,11 @@ func main() {
 	if _, err := p.Run(); err != nil {
 		fmt.Printf("Error: %v\n", err)
 		os.Exit(1)
+	}
+
+	// Check if context was cancelled
+	if downloadContext.Err() == context.Canceled {
+		fmt.Println("Download cancelled by user")
+		os.Exit(0)
 	}
 }

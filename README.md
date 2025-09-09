@@ -43,10 +43,10 @@ The application reads configuration from the `afetch.conf` file, which should co
 
 ```bash
 # GitHub API configuration
-readonly GITHUB_TOKEN="your_github_token_here"
-readonly REPO_OWNER="repository_owner"
-readonly REPO_NAME="repository_name"
-readonly ASSET_MASK="*.tag.gz"
+GITHUB_TOKEN="your_github_token_here"
+REPO_OWNER="repository_owner"
+REPO_NAME="repository_name"
+ASSET_MASK="*.tag.gz"
 ```
 
 The configuration file is searched in the following locations:

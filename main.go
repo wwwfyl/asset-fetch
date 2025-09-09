@@ -109,6 +109,9 @@ type model struct {
 	downloadState    *DownloadState
 	downloadAsset    *AssetInfo
 	downloadProgress int64
+	downloadFinished bool
+	downloadSuccess  bool
+	downloadResult   string
 }
 
 // Init bubbletea initialization
@@ -262,12 +265,19 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case downloadCompleteMsg:
 		m.downloading = false
 		m.downloadAsset = nil
-		fmt.Printf("File downloaded successfully: %s\n", string(msg))
+		m.downloadFinished = true
+		m.downloadSuccess = true
+		m.downloadResult = fmt.Sprintf("File downloaded successfully: %s", string(msg))
+		// Сразу выходим из программы
 		return m, tea.Quit
 	case downloadErrorMsg:
 		m.downloading = false
 		m.downloadAsset = nil
-		m.errorMsg = string(msg)
+		m.downloadFinished = true
+		m.downloadSuccess = false
+		m.downloadResult = string(msg)
+		// Сразу выходим из программы
+		return m, tea.Quit
 	case cancelDownloadMsg:
 		m.downloading = false
 		m.downloadAsset = nil
@@ -279,6 +289,40 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 // View interface display
 func (m model) View() string {
+	// If download is finished, display result
+	if m.downloadFinished {
+		s := ""
+
+		// Display download progress (already shown before)
+		if m.downloadAsset != nil {
+			s += fmt.Sprintf("\nDownloading %s...\n", m.downloadAsset.Name)
+		}
+
+		// Display progress information if we have download state
+		if m.downloadState != nil {
+			s += fmt.Sprintf("Downloaded: %s / %s\n",
+				formatSize(m.downloadState.totalBytes),
+				formatSize(m.downloadState.expectedBytes))
+		} else if m.downloadAsset != nil {
+			// Display initial progress information
+			s += fmt.Sprintf("Downloaded: %s / %s\n",
+				formatSize(0),
+				formatSize(m.downloadAsset.Size))
+		}
+
+		// Add one line spacing
+		s += "\n"
+
+		// Display result message
+		if m.downloadSuccess {
+			s += fmt.Sprintf("✓ %s\n", m.downloadResult)
+		} else {
+			s += fmt.Sprintf("✗ %s\n", m.downloadResult)
+		}
+
+		return s
+	}
+
 	// If we are in confirmation state, display confirmation dialog
 	if m.confirming && m.confirmAsset != nil {
 		s := fmt.Sprintf("\nSelected artifact:\n")

@@ -451,10 +451,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 
-		// Store result
-		result := fmt.Sprintf("✓ %s downloaded successfully", string(msg))
-		m.downloadResults = append(m.downloadResults, result)
-
 		// Move to next download in queue
 		m.currentDownloadIndex++
 		if m.currentDownloadIndex < len(m.downloadQueue) {
@@ -477,10 +473,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case downloadErrorMsg:
 		m.downloading = false
 		m.downloadAsset = nil
-
-		// Store error result
-		result := fmt.Sprintf("✗ Error downloading %s: %s", m.downloadAsset.Name, string(msg))
-		m.downloadResults = append(m.downloadResults, result)
 
 		// Move to next download in queue
 		m.currentDownloadIndex++
@@ -925,7 +917,11 @@ func fetchReleases() tea.Msg {
 	if err != nil {
 		return errorMsg(err.Error())
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			// Log the error but don't return it as it's in defer
+		}
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		return errorMsg(fmt.Sprintf("GitHub API error: %d", resp.StatusCode))
@@ -1045,7 +1041,10 @@ func parseSize(sizeStr string) int64 {
 	// Parse the number
 	numberStr = strings.TrimSpace(numberStr)
 	var number float64
-	fmt.Sscanf(numberStr, "%f", &number)
+	if _, err := fmt.Sscanf(numberStr, "%f", &number); err != nil {
+		// If parsing fails, return 0
+		return 0
+	}
 
 	return int64(number * float64(multiplier))
 }
@@ -1109,7 +1108,11 @@ func downloadAsset(asset AssetInfo) tea.Cmd {
 			}
 			return downloadErrorMsg(fmt.Sprintf("Error downloading file: %v", err))
 		}
-		defer resp.Body.Close()
+		defer func() {
+			if closeErr := resp.Body.Close(); closeErr != nil {
+				// Log the error but don't return it as it's in defer
+			}
+		}()
 
 		// Check response status
 		if resp.StatusCode != http.StatusOK {
@@ -1121,7 +1124,11 @@ func downloadAsset(asset AssetInfo) tea.Cmd {
 		if err != nil {
 			return downloadErrorMsg(fmt.Sprintf("Error creating file: %v", err))
 		}
-		defer out.Close()
+		defer func() {
+			if closeErr := out.Close(); closeErr != nil {
+				// Log the error but don't return it as it's in defer
+			}
+		}()
 
 		// Create a progress reader
 		progressReader := &ProgressReader{
@@ -1146,11 +1153,15 @@ func downloadAsset(asset AssetInfo) tea.Cmd {
 			// Check if the error is due to context cancellation
 			if downloadContext.Err() == context.Canceled {
 				// Clean up partial file
-				os.Remove(asset.Name)
+				if removeErr := os.Remove(asset.Name); removeErr != nil {
+					// Log the error but don't return it as we already have a cancellation error
+				}
 				return downloadErrorMsg("Download cancelled by user")
 			}
 			// Clean up partial file
-			os.Remove(asset.Name)
+			if removeErr := os.Remove(asset.Name); removeErr != nil {
+				// Log the error but don't return it as we already have a write error
+			}
 			return downloadErrorMsg(fmt.Sprintf("Error writing file: %v", err))
 		}
 

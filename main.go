@@ -66,15 +66,6 @@ type AssetInfo struct {
 	DisplayLine   string
 }
 
-// DownloadState structure for tracking download progress
-type DownloadState struct {
-	totalBytes    int64
-	expectedBytes int64
-	error         error
-	completed     bool
-	mutex         sync.Mutex
-}
-
 // DownloadProgress structure for tracking download progress for tabular display
 type DownloadProgress struct {
 	downloadedBytes int64
@@ -123,7 +114,7 @@ type model struct {
 	downloadMsg             string
 	confirming              bool
 	confirmAsset            *AssetInfo
-	downloadState           *DownloadState
+	downloadProgress        *DownloadProgress
 	downloadAsset           *AssetInfo
 	currentDownloadProgress int64
 	downloadFinished        bool
@@ -402,17 +393,17 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				totalBytes := parseSize(totalStr)
 
 				// Update download state for progress bar
-				m.downloadState = &DownloadState{
-					totalBytes:    downloadedBytes,
-					expectedBytes: totalBytes,
+				m.downloadProgress = &DownloadProgress{
+					downloadedBytes: downloadedBytes,
+					totalBytes:      totalBytes,
 				}
 			}
 		}
 	case downloadProgressUpdateMsg:
 		// Update download state for progress bar
-		m.downloadState = &DownloadState{
-			totalBytes:    msg.totalBytes,
-			expectedBytes: msg.expectedBytes,
+		m.downloadProgress = &DownloadProgress{
+			downloadedBytes: msg.totalBytes,
+			totalBytes:      msg.expectedBytes,
 		}
 
 		// Update download progress for tabular display

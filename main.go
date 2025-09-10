@@ -1186,7 +1186,7 @@ func loadConfig() (*Config, error) {
 	} else if _, err := os.Stat(homeConfigFile); err == nil {
 		fileToRead = homeConfigFile
 	} else {
-		return nil, fmt.Errorf("Configuration file not found in %s or %s", configFile, homeConfigFile)
+		return nil, fmt.Errorf("configuration file not found in %s or %s", configFile, homeConfigFile)
 	}
 
 	// Read configuration file

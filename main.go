@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -1103,7 +1104,7 @@ func downloadAsset(asset AssetInfo) tea.Cmd {
 		resp, err := client.Do(req)
 		if err != nil {
 			// Check if the error is due to context cancellation
-			if downloadContext.Err() == context.Canceled {
+			if errors.Is(downloadContext.Err(), context.Canceled) {
 				return downloadErrorMsg("Download cancelled by user")
 			}
 			return downloadErrorMsg(fmt.Sprintf("Error downloading file: %v", err))
@@ -1151,7 +1152,7 @@ func downloadAsset(asset AssetInfo) tea.Cmd {
 		_, err = io.Copy(out, progressReader)
 		if err != nil {
 			// Check if the error is due to context cancellation
-			if downloadContext.Err() == context.Canceled {
+			if errors.Is(downloadContext.Err(), context.Canceled) {
 				// Clean up partial file
 				if removeErr := os.Remove(asset.Name); removeErr != nil {
 					// Log the error but don't return it as we already have a cancellation error
@@ -1251,7 +1252,7 @@ func main() {
 	}
 
 	// Check if context was cancelled
-	if downloadContext.Err() == context.Canceled {
+	if errors.Is(downloadContext.Err(), context.Canceled) {
 		fmt.Println("Download cancelled by user")
 		os.Exit(0)
 	}

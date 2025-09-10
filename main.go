@@ -74,6 +74,13 @@ type DownloadState struct {
 	mutex         sync.Mutex
 }
 
+// DownloadProgress structure for tracking download progress for Flatpak-style display
+type DownloadProgress struct {
+	downloadedBytes int64
+	totalBytes      int64
+	completed       bool
+}
+
 // ProgressReader structure for tracking download progress
 type ProgressReader struct {
 	reader     io.Reader
@@ -95,24 +102,40 @@ func (pr *ProgressReader) Read(p []byte) (int, error) {
 	return n, err
 }
 
+// min returns the smaller of two integers
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
+// truncateString truncates a string to the specified length and adds "..." if truncated
+func truncateString(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	return s[:maxLen-3] + "..."
+}
+
 // Model structure for bubbletea
 type model struct {
 	// Original fields for asset selection mode
-	assets           []AssetInfo
-	cursor           int
-	quitting         bool
-	loading          bool
-	errorMsg         string
-	downloading      bool
-	downloadMsg      string
-	confirming       bool
-	confirmAsset     *AssetInfo
-	downloadState    *DownloadState
-	downloadAsset    *AssetInfo
-	downloadProgress int64
-	downloadFinished bool
-	downloadSuccess  bool
-	downloadResult   string
+	assets                  []AssetInfo
+	cursor                  int
+	quitting                bool
+	loading                 bool
+	errorMsg                string
+	downloading             bool
+	downloadMsg             string
+	confirming              bool
+	confirmAsset            *AssetInfo
+	downloadState           *DownloadState
+	downloadAsset           *AssetInfo
+	currentDownloadProgress int64
+	downloadFinished        bool
+	downloadSuccess         bool
+	downloadResult          string
 
 	// New fields for release selection mode
 	releases      []Release
@@ -125,9 +148,10 @@ type model struct {
 	selectedAssetMsg string // Message to show which assets are selected
 
 	// New fields for sequential download mode
-	downloadQueue        []AssetInfo // Queue of assets to download
-	currentDownloadIndex int         // Index of currently downloading asset
-	downloadResults      []string    // Results of downloads
+	downloadQueue        []AssetInfo        // Queue of assets to download
+	currentDownloadIndex int                // Index of currently downloading asset
+	downloadResults      []string           // Results of downloads
+	downloadsProgress    []DownloadProgress // Progress of each download in the queue
 }
 
 // Init bubbletea initialization
@@ -257,6 +281,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 				m.downloadResults = []string{}
 				m.currentDownloadIndex = 0
+				m.downloadsProgress = make([]DownloadProgress, len(m.downloadQueue))
 
 				// Start downloading if we have assets in queue
 				if len(m.downloadQueue) > 0 {
@@ -396,9 +421,43 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			totalBytes:    msg.totalBytes,
 			expectedBytes: msg.expectedBytes,
 		}
+
+		// Update download progress for Flatpak-style display
+		if m.currentDownloadIndex >= 0 && m.currentDownloadIndex < len(m.downloadsProgress) {
+			m.downloadsProgress[m.currentDownloadIndex] = DownloadProgress{
+				downloadedBytes: msg.totalBytes,
+				totalBytes:      msg.expectedBytes,
+				completed:       msg.totalBytes >= msg.expectedBytes,
+			}
+		}
 	case downloadCompleteMsg:
 		m.downloading = false
 		m.downloadAsset = nil
+
+		// Get actual file size from filesystem for completed download
+		var actualSize int64
+		if fileInfo, err := os.Stat(string(msg)); err == nil {
+			actualSize = fileInfo.Size()
+		}
+
+		// Mark current download as completed with actual file size
+		if m.currentDownloadIndex >= 0 && m.currentDownloadIndex < len(m.downloadsProgress) {
+			asset := m.downloadQueue[m.currentDownloadIndex]
+			// Use actual file size if available, otherwise fall back to asset size or downloaded bytes
+			finalSize := actualSize
+			if finalSize == 0 {
+				finalSize = asset.Size
+			}
+			if finalSize == 0 {
+				finalSize = m.downloadsProgress[m.currentDownloadIndex].downloadedBytes
+			}
+
+			m.downloadsProgress[m.currentDownloadIndex] = DownloadProgress{
+				downloadedBytes: finalSize,
+				totalBytes:      finalSize,
+				completed:       true,
+			}
+		}
 
 		// Store result
 		result := fmt.Sprintf("✓ %s downloaded successfully", string(msg))
@@ -532,21 +591,62 @@ func (m model) View() string {
 			s += result + "\n"
 		}
 
-		// Display current download progress
-		if m.downloadAsset != nil {
-			s += fmt.Sprintf("\nDownloading %s...\n", m.downloadAsset.Name)
-		}
+		// Display Flatpak-style progress for all files in the queue
+		headerStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("231")).Bold(true)
+		s += headerStyle.Render("Filename                                 Status          Tag                            Progress") + "\n"
+		for i, asset := range m.downloadQueue {
+			status := "[ ]"
+			progressInfo := ""
 
-		// Display progress information if we have download state
-		if m.downloadState != nil {
-			s += fmt.Sprintf("Downloaded: %s / %s\n",
-				formatSize(m.downloadState.totalBytes),
-				formatSize(m.downloadState.expectedBytes))
-		} else if m.downloadAsset != nil {
-			// Display initial progress information
-			s += fmt.Sprintf("Downloaded: %s / %s\n",
-				formatSize(0),
-				formatSize(m.downloadAsset.Size))
+			if i < len(m.downloadsProgress) {
+				progress := m.downloadsProgress[i]
+				if progress.completed {
+					status = "[✓]"
+					// For completed downloads, show actual downloaded size
+					if progress.totalBytes > 0 {
+						progressInfo = fmt.Sprintf("%s / %s", formatSize(progress.totalBytes), formatSize(progress.totalBytes))
+					} else if asset.Size > 0 {
+						progressInfo = fmt.Sprintf("%s / %s", formatSize(asset.Size), formatSize(asset.Size))
+					} else {
+						// File downloaded but size was unknown, try to get actual size from filesystem
+						progressInfo = formatSize(progress.downloadedBytes) + " / " + formatSize(progress.downloadedBytes)
+					}
+				} else if progress.downloadedBytes > 0 || progress.totalBytes > 0 {
+					status = "[-]"
+					// Show progress with best available size information
+					totalSize := progress.totalBytes
+					if totalSize == 0 && asset.Size > 0 {
+						totalSize = asset.Size
+					}
+					if totalSize > 0 {
+						progressInfo = fmt.Sprintf("%s / %s", formatSize(progress.downloadedBytes), formatSize(totalSize))
+					} else {
+						progressInfo = formatSize(progress.downloadedBytes) + " / Unknown"
+					}
+				} else {
+					status = "[ ]"
+					if asset.Size > 0 {
+						progressInfo = fmt.Sprintf("%s / %s", formatSize(0), formatSize(asset.Size))
+					} else {
+						progressInfo = "0B / Unknown"
+					}
+				}
+			} else {
+				// Not yet started
+				status = "[ ]"
+				if asset.Size > 0 {
+					progressInfo = fmt.Sprintf("%s / %s", formatSize(0), formatSize(asset.Size))
+				} else {
+					progressInfo = "0B / Unknown"
+				}
+			}
+
+			// Format the line with proper spacing
+			s += fmt.Sprintf("%-40s %-15s %-30s %s\n",
+				truncateString(asset.Name, 40),
+				status,
+				truncateString(asset.ReleaseTag, 30),
+				progressInfo)
 		}
 
 		return s
@@ -554,18 +654,39 @@ func (m model) View() string {
 
 	// If downloads are in progress but no results yet, show current download
 	if m.downloading && m.downloadAsset != nil {
-		s := fmt.Sprintf("Downloading %s...\n", m.downloadAsset.Name)
+		s := "Download progress:\n\n"
 
-		// Display progress information if we have download state
-		if m.downloadState != nil {
-			s += fmt.Sprintf("Downloaded: %s / %s\n",
-				formatSize(m.downloadState.totalBytes),
-				formatSize(m.downloadState.expectedBytes))
-		} else {
-			// Display initial progress information
-			s += fmt.Sprintf("Downloaded: %s / %s\n",
-				formatSize(0),
-				formatSize(m.downloadAsset.Size))
+		// Display Flatpak-style progress for all files in the queue
+		headerStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("231")).Bold(true)
+		s += headerStyle.Render("Filename                                 Status          Tag                            Progress") + "\n"
+		for i, asset := range m.downloadQueue {
+			status := "[ ]"
+			progressInfo := ""
+
+			if i < len(m.downloadsProgress) {
+				progress := m.downloadsProgress[i]
+				if progress.completed {
+					status = "[✓]"
+					progressInfo = fmt.Sprintf("%s / %s", formatSize(progress.totalBytes), formatSize(progress.totalBytes))
+				} else if progress.totalBytes > 0 {
+					status = "[-]"
+					progressInfo = fmt.Sprintf("%s / %s", formatSize(progress.downloadedBytes), formatSize(progress.totalBytes))
+				} else {
+					status = "[ ]"
+					progressInfo = fmt.Sprintf("%s / %s", formatSize(0), formatSize(asset.Size))
+				}
+			} else {
+				// Not yet started
+				status = "[ ]"
+				progressInfo = fmt.Sprintf("%s / %s", formatSize(0), formatSize(asset.Size))
+			}
+
+			// Format the line with proper spacing
+			s += fmt.Sprintf("%-40s %-15s %-30s %s\n",
+				truncateString(asset.Name, 40),
+				status,
+				truncateString(asset.ReleaseTag, 30),
+				progressInfo)
 		}
 
 		return s
@@ -575,9 +696,37 @@ func (m model) View() string {
 	if m.downloadFinished {
 		s := "Download results:\n\n"
 
-		// Display all download results
-		for _, result := range m.downloadResults {
-			s += result + "\n"
+		// Display Flatpak-style progress for all files in the queue
+		headerStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("231")).Bold(true)
+		s += headerStyle.Render("Filename                                 Status          Tag                            Progress") + "\n"
+		for i, asset := range m.downloadQueue {
+			status := "[ ]"
+			progressInfo := ""
+
+			if i < len(m.downloadsProgress) {
+				progress := m.downloadsProgress[i]
+				if progress.completed {
+					status = "[✓]"
+					progressInfo = fmt.Sprintf("%s / %s", formatSize(progress.totalBytes), formatSize(progress.totalBytes))
+				} else if progress.totalBytes > 0 {
+					status = "[-]"
+					progressInfo = fmt.Sprintf("%s / %s", formatSize(progress.downloadedBytes), formatSize(progress.totalBytes))
+				} else {
+					status = "[ ]"
+					progressInfo = fmt.Sprintf("%s / %s", formatSize(0), formatSize(asset.Size))
+				}
+			} else {
+				// Not yet started
+				status = "[ ]"
+				progressInfo = fmt.Sprintf("%s / %s", formatSize(0), formatSize(asset.Size))
+			}
+
+			// Format the line with proper spacing
+			s += fmt.Sprintf("%-40s %-15s %-30s %s\n",
+				truncateString(asset.Name, 40),
+				status,
+				truncateString(asset.ReleaseTag, 30),
+				progressInfo)
 		}
 
 		s += "\n" + m.downloadResult + "\n"
@@ -665,21 +814,62 @@ func (m model) View() string {
 	s += "\nPress '↑/↓' or 'j/k' to navigate, 'enter' to select, 'q' or 'ctrl+c' to quit\n"
 
 	if m.downloading {
-		// Display download progress
-		if m.downloadAsset != nil {
-			s += fmt.Sprintf("\nDownloading %s...\n", m.downloadAsset.Name)
-		}
+		// Display Flatpak-style progress for all files in the queue
+		headerStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("231")).Bold(true)
+		s += headerStyle.Render("Filename                                 Status          Tag                            Progress") + "\n"
+		for i, asset := range m.downloadQueue {
+			status := "[ ]"
+			progressInfo := ""
 
-		// Display progress information if we have download state
-		if m.downloadState != nil {
-			s += fmt.Sprintf("Downloaded: %s / %s\n",
-				formatSize(m.downloadState.totalBytes),
-				formatSize(m.downloadState.expectedBytes))
-		} else if m.downloadAsset != nil {
-			// Display initial progress information
-			s += fmt.Sprintf("Downloaded: %s / %s\n",
-				formatSize(0),
-				formatSize(m.downloadAsset.Size))
+			if i < len(m.downloadsProgress) {
+				progress := m.downloadsProgress[i]
+				if progress.completed {
+					status = "[✓]"
+					// For completed downloads, show actual downloaded size
+					if progress.totalBytes > 0 {
+						progressInfo = fmt.Sprintf("%s / %s", formatSize(progress.totalBytes), formatSize(progress.totalBytes))
+					} else if asset.Size > 0 {
+						progressInfo = fmt.Sprintf("%s / %s", formatSize(asset.Size), formatSize(asset.Size))
+					} else {
+						// File downloaded but size was unknown, try to get actual size from filesystem
+						progressInfo = formatSize(progress.downloadedBytes) + " / " + formatSize(progress.downloadedBytes)
+					}
+				} else if progress.downloadedBytes > 0 || progress.totalBytes > 0 {
+					status = "[-]"
+					// Show progress with best available size information
+					totalSize := progress.totalBytes
+					if totalSize == 0 && asset.Size > 0 {
+						totalSize = asset.Size
+					}
+					if totalSize > 0 {
+						progressInfo = fmt.Sprintf("%s / %s", formatSize(progress.downloadedBytes), formatSize(totalSize))
+					} else {
+						progressInfo = formatSize(progress.downloadedBytes) + " / Unknown"
+					}
+				} else {
+					status = "[ ]"
+					if asset.Size > 0 {
+						progressInfo = fmt.Sprintf("%s / %s", formatSize(0), formatSize(asset.Size))
+					} else {
+						progressInfo = "0B / Unknown"
+					}
+				}
+			} else {
+				// Not yet started
+				status = "[ ]"
+				if asset.Size > 0 {
+					progressInfo = fmt.Sprintf("%s / %s", formatSize(0), formatSize(asset.Size))
+				} else {
+					progressInfo = "0B / Unknown"
+				}
+			}
+
+			// Format the line with proper spacing
+			s += fmt.Sprintf("%-40s %-15s %-30s %s\n",
+				truncateString(asset.Name, 40),
+				status,
+				truncateString(asset.ReleaseTag, 30),
+				progressInfo)
 		}
 	}
 

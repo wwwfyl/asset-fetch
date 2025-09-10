@@ -3,7 +3,7 @@
 
 # GitHub API configuration
 # Generate a personal access token at https://github.com/settings/tokens
-# and replace the value below with your token
+# Token is required for private repositories, optional for public repositories
 GITHUB_TOKEN="your_github_token_here"
 
 # Repository owner (username or organization name)
@@ -13,5 +13,17 @@ REPO_OWNER="your_repo_owner_here"
 REPO_NAME="your_repo_name_here"
 
 # Asset mask (glob pattern to match asset filenames)
-# Example: "*.zip" to match all zip files
+# If empty or commented out, the application will show release selection mode
+# where you can first select a release, then choose from all its assets
+
+# Examples of asset masks:
+# ASSET_MASK="*.zip"              # Match all .zip files
+# ASSET_MASK="*.tar.gz"           # Match all .tar.gz files
+# ASSET_MASK="myapp-*"            # Match files starting with "myapp-"
+# ASSET_MASK="*-linux-x64*"       # Match files containing "-linux-x64"
+# ASSET_MASK="*.AppImage"         # Match all AppImage files
+
 ASSET_MASK="*.your_extension_here"
+
+# Leave ASSET_MASK empty to enable release selection mode:
+# ASSET_MASK=""

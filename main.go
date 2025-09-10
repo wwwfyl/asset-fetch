@@ -27,10 +27,10 @@ var downloadProgressMutex sync.Mutex
 
 // Config structure for storing configuration
 type Config struct {
-	GITHUB_TOKEN string
-	REPO_OWNER   string
-	REPO_NAME    string
-	ASSET_MASK   string
+	GitHubToken string
+	RepoOwner   string
+	RepoName    string
+	AssetMask   string
 }
 
 // Asset structure for storing artifact information
@@ -74,7 +74,7 @@ type DownloadState struct {
 	mutex         sync.Mutex
 }
 
-// DownloadProgress structure for tracking download progress for Flatpak-style display
+// DownloadProgress structure for tracking download progress for tabular display
 type DownloadProgress struct {
 	downloadedBytes int64
 	totalBytes      int64
@@ -414,7 +414,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			expectedBytes: msg.expectedBytes,
 		}
 
-		// Update download progress for Flatpak-style display
+		// Update download progress for tabular display
 		if m.currentDownloadIndex >= 0 && m.currentDownloadIndex < len(m.downloadsProgress) {
 			m.downloadsProgress[m.currentDownloadIndex] = DownloadProgress{
 				downloadedBytes: msg.totalBytes,
@@ -575,7 +575,7 @@ func (m model) View() string {
 			s += result + "\n"
 		}
 
-		// Display Flatpak-style progress for all files in the queue
+		// Display tabular progress for all files in the queue
 		headerStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("231")).Bold(true)
 		s += headerStyle.Render("Filename                                 Status          Tag                            Progress") + "\n"
 		for i, asset := range m.downloadQueue {
@@ -640,7 +640,7 @@ func (m model) View() string {
 	if m.downloading && m.downloadAsset != nil {
 		s := "Download progress:\n\n"
 
-		// Display Flatpak-style progress for all files in the queue
+		// Display tabular progress for all files in the queue
 		headerStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("231")).Bold(true)
 		s += headerStyle.Render("Filename                                 Status          Tag                            Progress") + "\n"
 		for i, asset := range m.downloadQueue {
@@ -680,7 +680,7 @@ func (m model) View() string {
 	if m.downloadFinished {
 		s := "Download results:\n\n"
 
-		// Display Flatpak-style progress for all files in the queue
+		// Display tabular progress for all files in the queue
 		headerStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("231")).Bold(true)
 		s += headerStyle.Render("Filename                                 Status          Tag                            Progress") + "\n"
 		for i, asset := range m.downloadQueue {
@@ -798,7 +798,7 @@ func (m model) View() string {
 	s += "\nPress '↑/↓' or 'j/k' to navigate, 'enter' to select, 'q' or 'ctrl+c' to quit\n"
 
 	if m.downloading {
-		// Display Flatpak-style progress for all files in the queue
+		// Display tabular progress for all files in the queue
 		headerStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("231")).Bold(true)
 		s += headerStyle.Render("Filename                                 Status          Tag                            Progress") + "\n"
 		for i, asset := range m.downloadQueue {
@@ -898,7 +898,7 @@ func fetchReleases() tea.Msg {
 		return errorMsg(err.Error())
 	}
 
-	apiURL := fmt.Sprintf("https://api.github.com/repos/%s/%s/releases", config.REPO_OWNER, config.REPO_NAME)
+	apiURL := fmt.Sprintf("https://api.github.com/repos/%s/%s/releases", config.RepoOwner, config.RepoName)
 
 	client := &http.Client{}
 	req, err := http.NewRequest("GET", apiURL, nil)
@@ -908,8 +908,8 @@ func fetchReleases() tea.Msg {
 
 	req.Header.Set("Accept", "application/vnd.github+json")
 	// Only add authorization header if token is provided
-	if config.GITHUB_TOKEN != "" {
-		req.Header.Set("Authorization", "Bearer "+config.GITHUB_TOKEN)
+	if config.GitHubToken != "" {
+		req.Header.Set("Authorization", "Bearer "+config.GitHubToken)
 	}
 	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
 
@@ -938,8 +938,8 @@ func fetchReleases() tea.Msg {
 		return errorMsg(err.Error())
 	}
 
-	// If ASSET_MASK is empty, return releases list
-	if config.ASSET_MASK == "" {
+	// If AssetMask is empty, return releases list
+	if config.AssetMask == "" {
 		return releasesMsg{releases: releases}
 	}
 
@@ -947,7 +947,7 @@ func fetchReleases() tea.Msg {
 	for _, release := range releases {
 		for _, asset := range release.Assets {
 			// Use asset mask from config or default to "*.tag.gz"
-			assetMask := config.ASSET_MASK
+			assetMask := config.AssetMask
 			if assetMask == "" {
 				assetMask = "*.tag.gz"
 			}
@@ -1094,8 +1094,8 @@ func downloadAsset(asset AssetInfo) tea.Cmd {
 		// Set headers
 		req.Header.Set("Accept", "application/octet-stream")
 		// Only add authorization header if token is provided
-		if config.GITHUB_TOKEN != "" {
-			req.Header.Set("Authorization", "Bearer "+config.GITHUB_TOKEN)
+		if config.GitHubToken != "" {
+			req.Header.Set("Authorization", "Bearer "+config.GitHubToken)
 		}
 		req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
 
@@ -1219,13 +1219,13 @@ func loadConfig() (*Config, error) {
 
 		switch key {
 		case "GITHUB_TOKEN":
-			config.GITHUB_TOKEN = value
+			config.GitHubToken = value
 		case "REPO_OWNER":
-			config.REPO_OWNER = value
+			config.RepoOwner = value
 		case "REPO_NAME":
-			config.REPO_NAME = value
+			config.RepoName = value
 		case "ASSET_MASK":
-			config.ASSET_MASK = value
+			config.AssetMask = value
 		}
 	}
 

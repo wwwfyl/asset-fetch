@@ -597,7 +597,7 @@ func (m model) View() string {
 					}
 				} else if progress.downloadedBytes > 0 || progress.totalBytes > 0 {
 					status = "[-]"
-					// Show progress with best available size information
+					// Show progress with the best available size information
 					totalSize := progress.totalBytes
 					if totalSize == 0 && asset.Size > 0 {
 						totalSize = asset.Size
@@ -820,7 +820,7 @@ func (m model) View() string {
 					}
 				} else if progress.downloadedBytes > 0 || progress.totalBytes > 0 {
 					status = "[-]"
-					// Show progress with best available size information
+					// Show progress with the best available size information
 					totalSize := progress.totalBytes
 					if totalSize == 0 && asset.Size > 0 {
 						totalSize = asset.Size

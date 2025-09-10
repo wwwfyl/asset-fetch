@@ -999,10 +999,10 @@ func fetchReleases() tea.Msg {
 }
 
 // formatCreatedAt format creation date
-func formatCreatedAt(created_at string) string {
-	t, err := time.Parse(time.RFC3339, created_at)
+func formatCreatedAt(createdAt string) string {
+	t, err := time.Parse(time.RFC3339, createdAt)
 	if err != nil {
-		return created_at
+		return createdAt
 	}
 	return t.Format("2006-01-02 15:04")
 }

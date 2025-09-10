@@ -94,6 +94,308 @@ func (pr *ProgressReader) Read(p []byte) (int, error) {
 	return n, err
 }
 
+// NavigationHandler handles common navigation keys
+type NavigationHandler struct {
+	cursor   *int
+	maxItems int
+}
+
+func (nh NavigationHandler) HandleKey(key string) bool {
+	switch key {
+	case "up", "k":
+		if *nh.cursor > 0 {
+			(*nh.cursor)--
+		}
+		return true
+	case "down", "j":
+		if *nh.cursor < nh.maxItems-1 {
+			(*nh.cursor)++
+		}
+		return true
+	}
+	return false
+}
+
+// ProgressFormatter handles progress display formatting
+type ProgressFormatter struct{}
+
+func (pf ProgressFormatter) FormatProgress(asset AssetInfo, progress DownloadProgress) (string, string) {
+	var status, progressInfo string
+
+	if progress.completed {
+		status = "[✓]"
+		if progress.totalBytes > 0 {
+			progressInfo = fmt.Sprintf("%s / %s", formatSize(progress.totalBytes), formatSize(progress.totalBytes))
+		} else if asset.Size > 0 {
+			progressInfo = fmt.Sprintf("%s / %s", formatSize(asset.Size), formatSize(asset.Size))
+		} else {
+			progressInfo = formatSize(progress.downloadedBytes) + " / " + formatSize(progress.downloadedBytes)
+		}
+	} else if progress.downloadedBytes > 0 || progress.totalBytes > 0 {
+		status = "[-]"
+		totalSize := progress.totalBytes
+		if totalSize == 0 && asset.Size > 0 {
+			totalSize = asset.Size
+		}
+		if totalSize > 0 {
+			progressInfo = fmt.Sprintf("%s / %s", formatSize(progress.downloadedBytes), formatSize(totalSize))
+		} else {
+			progressInfo = formatSize(progress.downloadedBytes) + " / Unknown"
+		}
+	} else {
+		status = "[ ]"
+		if asset.Size > 0 {
+			progressInfo = fmt.Sprintf("%s / %s", formatSize(0), formatSize(asset.Size))
+		} else {
+			progressInfo = "0B / Unknown"
+		}
+	}
+
+	return status, progressInfo
+}
+
+func (pf ProgressFormatter) RenderProgressTable(assets []AssetInfo, progresses []DownloadProgress) string {
+	headerStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("231")).Bold(true)
+	s := headerStyle.Render("Filename                                 Status          Tag                            Progress") + "\n"
+
+	for i, asset := range assets {
+		var progress DownloadProgress
+		if i < len(progresses) {
+			progress = progresses[i]
+		}
+
+		status, progressInfo := pf.FormatProgress(asset, progress)
+
+		s += fmt.Sprintf("%-40s %-15s %-30s %s\n",
+			truncateString(asset.Name, 40),
+			status,
+			truncateString(asset.ReleaseTag, 30),
+			progressInfo)
+	}
+
+	return s
+}
+
+// AssetFormatter handles asset information formatting
+type AssetFormatter struct{}
+
+func (af AssetFormatter) FormatAssetInfo(asset Asset, release Release) AssetInfo {
+	formattedDate := formatCreatedAt(asset.CreatedAt)
+	sizeStr := formatSize(asset.Size)
+
+	return AssetInfo{
+		Name:          asset.Name,
+		ID:            asset.ID,
+		URL:           asset.URL,
+		DownloadURL:   asset.BrowserDownloadURL,
+		Size:          asset.Size,
+		CreatedAt:     asset.CreatedAt,
+		ReleaseTag:    release.TagName,
+		ReleaseName:   release.Name,
+		FormattedDate: formattedDate,
+		SizeStr:       sizeStr,
+		DisplayLine:   af.createDisplayLine(asset.Name, sizeStr, formattedDate, release.TagName),
+	}
+}
+
+func (af AssetFormatter) createDisplayLine(name, sizeStr, formattedDate, releaseTag string) string {
+	if releaseTag != "" {
+		return fmt.Sprintf("[%s] %s (%s, %s)", releaseTag, name, sizeStr, formattedDate)
+	}
+	return fmt.Sprintf("%s (%s, %s)", name, sizeStr, formattedDate)
+}
+
+func (af AssetFormatter) createDisplayLineWithoutTag(name, sizeStr, formattedDate string) string {
+	return fmt.Sprintf("%s (%s, %s)", name, sizeStr, formattedDate)
+}
+
+// ViewRenderer handles different view states
+type ViewRenderer struct {
+	progressFormatter ProgressFormatter
+}
+
+func (vr ViewRenderer) renderReleasesView(m model) string {
+	s := "Select release:\n\n"
+
+	// Styles
+	selectedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("170")).Bold(true)
+	defaultStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("15"))
+
+	// Display releases
+	for i, release := range m.releases {
+		line := fmt.Sprintf("[%s] %s", release.TagName, release.Name)
+		if i == m.releaseCursor {
+			s += selectedStyle.Render("> "+line) + "\n"
+		} else {
+			s += defaultStyle.Render("  "+line) + "\n"
+		}
+	}
+
+	s += "\nPress '↑/↓' or 'j/k' to navigate, 'enter' to select, 'q' or 'ctrl+c' to quit\n"
+	return s
+}
+
+func (vr ViewRenderer) renderSelectModeView(m model) string {
+	s := "Select assets to download (press space to select, enter to download):\n\n"
+
+	// Styles
+	selectedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("170")).Bold(true)
+	defaultStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("15"))
+	selectedAssetStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("46")) // Green
+	infoStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+
+	// Display assets with selection markers
+	for i, asset := range m.assets {
+		selectionMarker := " [ ] "
+		if i < len(m.selectedAssets) && m.selectedAssets[i] {
+			selectionMarker = selectedAssetStyle.Render(" [x] ")
+		}
+
+		if i == m.cursor {
+			s += selectedStyle.Render("> "+selectionMarker+asset.DisplayLine) + "\n"
+		} else {
+			s += defaultStyle.Render("  "+selectionMarker+asset.DisplayLine) + "\n"
+		}
+	}
+
+	// Display information about selected assets
+	selectedCount := 0
+	for _, selected := range m.selectedAssets {
+		if selected {
+			selectedCount++
+		}
+	}
+
+	if selectedCount > 0 {
+		s += "\n" + infoStyle.Render(fmt.Sprintf("%d asset(s) selected", selectedCount)) + "\n"
+	}
+
+	s += "\nPress '↑/↓' or 'j/k' to navigate, 'space' to select/deselect, 'enter' to download, 'q' or 'ctrl+c' to quit\n"
+	return s
+}
+
+func (vr ViewRenderer) renderDownloadingView(m model) string {
+	s := "Download progress:\n\n"
+
+	if len(m.downloadResults) > 0 {
+		for _, result := range m.downloadResults {
+			s += result + "\n"
+		}
+	}
+
+	s += vr.progressFormatter.RenderProgressTable(m.downloadQueue, m.downloadsProgress)
+	return s
+}
+
+func (vr ViewRenderer) renderFinishedView(m model) string {
+	s := "Download results:\n\n"
+	s += vr.progressFormatter.RenderProgressTable(m.downloadQueue, m.downloadsProgress)
+	s += "\n" + m.downloadResult + "\n"
+	return s
+}
+
+func (vr ViewRenderer) renderConfirmView(m model) string {
+	s := fmt.Sprintf("\nSelected artifact:\n")
+	s += fmt.Sprintf(" Name: %s\n", m.confirmAsset.Name)
+	s += fmt.Sprintf("  Release: %s\n", m.confirmAsset.ReleaseTag)
+	s += fmt.Sprintf(" Size: %s\n", m.confirmAsset.SizeStr)
+	s += fmt.Sprintf("\nDownload this file to the current folder? (y/N): ")
+	return s
+}
+
+func (vr ViewRenderer) renderDefaultView(m model) string {
+	s := "Select artifact for download:\n\n"
+
+	// Styles
+	selectedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("170")).Bold(true)
+	defaultStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("15"))
+	infoStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+
+	// Display artifacts with height limit
+	const maxVisibleItems = 15
+	start := 0
+	end := len(m.assets)
+
+	if len(m.assets) > maxVisibleItems {
+		// Center the selected item
+		if m.cursor < maxVisibleItems/2 {
+			end = maxVisibleItems
+		} else if m.cursor > len(m.assets)-maxVisibleItems/2 {
+			start = len(m.assets) - maxVisibleItems
+		} else {
+			start = m.cursor - maxVisibleItems/2
+			end = start + maxVisibleItems
+		}
+	}
+
+	// Add scroll information if available
+	if start > 0 {
+		s += fmt.Sprintf("  ... %d more above\n", start)
+	}
+
+	for i := start; i < end && i < len(m.assets); i++ {
+		asset := m.assets[i]
+		if i == m.cursor {
+			s += selectedStyle.Render("> "+asset.DisplayLine) + "\n"
+		} else {
+			s += defaultStyle.Render("  "+asset.DisplayLine) + "\n"
+		}
+	}
+
+	// Add scroll information if available
+	if end < len(m.assets) {
+		s += fmt.Sprintf(" ... %d more below\n", len(m.assets)-end)
+	}
+
+	// Display additional information about the selected artifact
+	if len(m.assets) > 0 && m.cursor < len(m.assets) {
+		selectedAsset := m.assets[m.cursor]
+		s += "\n" + infoStyle.Render(fmt.Sprintf("Selected: %s", selectedAsset.Name)) + "\n"
+		s += infoStyle.Render(fmt.Sprintf("Release: %s", selectedAsset.ReleaseTag)) + "\n"
+		s += infoStyle.Render(fmt.Sprintf("Size: %s", selectedAsset.SizeStr)) + "\n"
+		s += infoStyle.Render(fmt.Sprintf("Created: %s", selectedAsset.FormattedDate)) + "\n"
+	}
+
+	s += "\nPress '↑/↓' or 'j/k' to navigate, 'enter' to select, 'q' or 'ctrl+c' to quit\n"
+
+	if m.downloading {
+		s += vr.progressFormatter.RenderProgressTable(m.downloadQueue, m.downloadsProgress)
+	}
+
+	return s
+}
+
+// Custom messages
+type errorMsg string
+
+type releasesData struct {
+	assets   []AssetInfo
+	releases []Release
+}
+
+type releasesMsg releasesData
+type downloadConfirmMsg AssetInfo
+type downloadProgressMsg string
+type downloadCompleteMsg string
+type downloadErrorMsg string
+type cancelDownloadMsg struct{}
+
+// startDownloadProgressMsg message to start download progress updates
+type startDownloadProgressMsg struct {
+	asset AssetInfo
+}
+
+// downloadProgressUpdateMsg message for updating download progress
+type downloadProgressUpdateMsg struct {
+	totalBytes    int64
+	expectedBytes int64
+}
+
+// updateDownloadProgressMsg message to update download progress
+type updateDownloadProgressMsg struct {
+	asset AssetInfo
+}
+
 // truncateString truncates a string to the specified length and adds "..." if truncated
 func truncateString(s string, maxLen int) string {
 	if len(s) <= maxLen {
@@ -136,6 +438,10 @@ type model struct {
 	currentDownloadIndex int                // Index of currently downloading asset
 	downloadResults      []string           // Results of downloads
 	downloadsProgress    []DownloadProgress // Progress of each download in the queue
+
+	// Helper components
+	viewRenderer   ViewRenderer
+	assetFormatter AssetFormatter
 }
 
 // Init bubbletea initialization
@@ -174,18 +480,19 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		// Handle keys when showing releases
 		if m.showReleases {
+			navHandler := NavigationHandler{
+				cursor:   &m.releaseCursor,
+				maxItems: len(m.releases),
+			}
+
+			if navHandler.HandleKey(msg.String()) {
+				return m, nil
+			}
+
 			switch msg.String() {
 			case "ctrl+c", "q":
 				m.quitting = true
 				return m, tea.Quit
-			case "up", "k":
-				if m.releaseCursor > 0 {
-					m.releaseCursor--
-				}
-			case "down", "j":
-				if m.releaseCursor < len(m.releases)-1 {
-					m.releaseCursor++
-				}
 			case "enter", " ":
 				if len(m.releases) > 0 {
 					// Show assets for selected release
@@ -196,27 +503,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					// Populate assets for selected release
 					release := m.releases[m.releaseCursor]
 					for _, asset := range release.Assets {
-						// Format creation date
-						formattedDate := formatCreatedAt(asset.CreatedAt)
-
-						// Format file size
-						sizeStr := formatSize(asset.Size)
-
-						displayLine := fmt.Sprintf("%s (%s, %s)", asset.Name, sizeStr, formattedDate)
-
-						m.assets = append(m.assets, AssetInfo{
-							Name:          asset.Name,
-							ID:            asset.ID,
-							URL:           asset.URL,
-							DownloadURL:   asset.BrowserDownloadURL,
-							Size:          asset.Size,
-							CreatedAt:     asset.CreatedAt,
-							ReleaseTag:    release.TagName,
-							ReleaseName:   release.Name,
-							FormattedDate: formattedDate,
-							SizeStr:       sizeStr,
-							DisplayLine:   displayLine,
-						})
+						assetInfo := m.assetFormatter.FormatAssetInfo(asset, release)
+						assetInfo.DisplayLine = m.assetFormatter.createDisplayLineWithoutTag(asset.Name, assetInfo.SizeStr, assetInfo.FormattedDate)
+						m.assets = append(m.assets, assetInfo)
 					}
 
 					// Initialize selected assets slice
@@ -229,18 +518,19 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		// Handle keys when in multi-select mode
 		if m.selectMode {
+			navHandler := NavigationHandler{
+				cursor:   &m.cursor,
+				maxItems: len(m.assets),
+			}
+
+			if navHandler.HandleKey(msg.String()) {
+				return m, nil
+			}
+
 			switch msg.String() {
 			case "ctrl+c", "q":
 				m.quitting = true
 				return m, tea.Quit
-			case "up", "k":
-				if m.cursor > 0 {
-					m.cursor--
-				}
-			case "down", "j":
-				if m.cursor < len(m.assets)-1 {
-					m.cursor++
-				}
 			case " ":
 				// Toggle selection
 				if len(m.selectedAssets) > m.cursor {
@@ -283,6 +573,15 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		// Regular key handling
+		navHandler := NavigationHandler{
+			cursor:   &m.cursor,
+			maxItems: len(m.assets),
+		}
+
+		if navHandler.HandleKey(msg.String()) {
+			return m, nil
+		}
+
 		switch msg.String() {
 		case "ctrl+c", "q":
 			if m.downloading {
@@ -296,14 +595,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			} else {
 				m.quitting = true
 				return m, tea.Quit
-			}
-		case "up", "k":
-			if m.cursor > 0 {
-				m.cursor--
-			}
-		case "down", "j":
-			if m.cursor < len(m.assets)-1 {
-				m.cursor++
 			}
 		case "enter", " ":
 			if len(m.assets) > 0 {
@@ -496,391 +787,30 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 // View interface display
 func (m model) View() string {
-	// If we are showing releases
-	if m.showReleases {
-		s := "Select release:\n\n"
-
-		// Styles
-		selectedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("170")).Bold(true)
-		defaultStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("15"))
-
-		// Display releases
-		for i, release := range m.releases {
-			line := fmt.Sprintf("[%s] %s", release.TagName, release.Name)
-			if i == m.releaseCursor {
-				s += selectedStyle.Render("> "+line) + "\n"
-			} else {
-				s += defaultStyle.Render("  "+line) + "\n"
-			}
-		}
-
-		s += "\nPress '↑/↓' or 'j/k' to navigate, 'enter' to select, 'q' or 'ctrl+c' to quit\n"
-		return s
-	}
-
-	// If we are in multi-select mode
-	if m.selectMode {
-		s := "Select assets to download (press space to select, enter to download):\n\n"
-
-		// Styles
-		selectedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("170")).Bold(true)
-		defaultStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("15"))
-		selectedAssetStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("46")) // Green
-		infoStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
-
-		// Display assets with selection markers
-		for i, asset := range m.assets {
-			selectionMarker := " [ ] "
-			if i < len(m.selectedAssets) && m.selectedAssets[i] {
-				selectionMarker = selectedAssetStyle.Render(" [x] ")
-			}
-
-			if i == m.cursor {
-				s += selectedStyle.Render("> "+selectionMarker+asset.DisplayLine) + "\n"
-			} else {
-				s += defaultStyle.Render("  "+selectionMarker+asset.DisplayLine) + "\n"
-			}
-		}
-
-		// Display information about selected assets
-		selectedCount := 0
-		for _, selected := range m.selectedAssets {
-			if selected {
-				selectedCount++
-			}
-		}
-
-		if selectedCount > 0 {
-			s += "\n" + infoStyle.Render(fmt.Sprintf("%d asset(s) selected", selectedCount)) + "\n"
-		}
-
-		s += "\nPress '↑/↓' or 'j/k' to navigate, 'space' to select/deselect, 'enter' to download, 'q' or 'ctrl+c' to quit\n"
-		return s
-	}
-
-	// If download is in progress, display download results so far
-	if m.downloading && len(m.downloadResults) > 0 {
-		s := "Download progress:\n\n"
-
-		// Display previous download results
-		for _, result := range m.downloadResults {
-			s += result + "\n"
-		}
-
-		// Display tabular progress for all files in the queue
-		headerStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("231")).Bold(true)
-		s += headerStyle.Render("Filename                                 Status          Tag                            Progress") + "\n"
-		for i, asset := range m.downloadQueue {
-			status := "[ ]"
-			progressInfo := ""
-
-			if i < len(m.downloadsProgress) {
-				progress := m.downloadsProgress[i]
-				if progress.completed {
-					status = "[✓]"
-					// For completed downloads, show actual downloaded size
-					if progress.totalBytes > 0 {
-						progressInfo = fmt.Sprintf("%s / %s", formatSize(progress.totalBytes), formatSize(progress.totalBytes))
-					} else if asset.Size > 0 {
-						progressInfo = fmt.Sprintf("%s / %s", formatSize(asset.Size), formatSize(asset.Size))
-					} else {
-						// File downloaded but size was unknown, try to get actual size from filesystem
-						progressInfo = formatSize(progress.downloadedBytes) + " / " + formatSize(progress.downloadedBytes)
-					}
-				} else if progress.downloadedBytes > 0 || progress.totalBytes > 0 {
-					status = "[-]"
-					// Show progress with the best available size information
-					totalSize := progress.totalBytes
-					if totalSize == 0 && asset.Size > 0 {
-						totalSize = asset.Size
-					}
-					if totalSize > 0 {
-						progressInfo = fmt.Sprintf("%s / %s", formatSize(progress.downloadedBytes), formatSize(totalSize))
-					} else {
-						progressInfo = formatSize(progress.downloadedBytes) + " / Unknown"
-					}
-				} else {
-					status = "[ ]"
-					if asset.Size > 0 {
-						progressInfo = fmt.Sprintf("%s / %s", formatSize(0), formatSize(asset.Size))
-					} else {
-						progressInfo = "0B / Unknown"
-					}
-				}
-			} else {
-				// Not yet started
-				status = "[ ]"
-				if asset.Size > 0 {
-					progressInfo = fmt.Sprintf("%s / %s", formatSize(0), formatSize(asset.Size))
-				} else {
-					progressInfo = "0B / Unknown"
-				}
-			}
-
-			// Format the line with proper spacing
-			s += fmt.Sprintf("%-40s %-15s %-30s %s\n",
-				truncateString(asset.Name, 40),
-				status,
-				truncateString(asset.ReleaseTag, 30),
-				progressInfo)
-		}
-
-		return s
-	}
-
-	// If downloads are in progress but no results yet, show current download
-	if m.downloading && m.downloadAsset != nil {
-		s := "Download progress:\n\n"
-
-		// Display tabular progress for all files in the queue
-		headerStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("231")).Bold(true)
-		s += headerStyle.Render("Filename                                 Status          Tag                            Progress") + "\n"
-		for i, asset := range m.downloadQueue {
-			status := "[ ]"
-			progressInfo := ""
-
-			if i < len(m.downloadsProgress) {
-				progress := m.downloadsProgress[i]
-				if progress.completed {
-					status = "[✓]"
-					progressInfo = fmt.Sprintf("%s / %s", formatSize(progress.totalBytes), formatSize(progress.totalBytes))
-				} else if progress.totalBytes > 0 {
-					status = "[-]"
-					progressInfo = fmt.Sprintf("%s / %s", formatSize(progress.downloadedBytes), formatSize(progress.totalBytes))
-				} else {
-					status = "[ ]"
-					progressInfo = fmt.Sprintf("%s / %s", formatSize(0), formatSize(asset.Size))
-				}
-			} else {
-				// Not yet started
-				status = "[ ]"
-				progressInfo = fmt.Sprintf("%s / %s", formatSize(0), formatSize(asset.Size))
-			}
-
-			// Format the line with proper spacing
-			s += fmt.Sprintf("%-40s %-15s %-30s %s\n",
-				truncateString(asset.Name, 40),
-				status,
-				truncateString(asset.ReleaseTag, 30),
-				progressInfo)
-		}
-
-		return s
-	}
-
-	// If downloads are finished, display all results
-	if m.downloadFinished {
-		s := "Download results:\n\n"
-
-		// Display tabular progress for all files in the queue
-		headerStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("231")).Bold(true)
-		s += headerStyle.Render("Filename                                 Status          Tag                            Progress") + "\n"
-		for i, asset := range m.downloadQueue {
-			status := "[ ]"
-			progressInfo := ""
-
-			if i < len(m.downloadsProgress) {
-				progress := m.downloadsProgress[i]
-				if progress.completed {
-					status = "[✓]"
-					progressInfo = fmt.Sprintf("%s / %s", formatSize(progress.totalBytes), formatSize(progress.totalBytes))
-				} else if progress.totalBytes > 0 {
-					status = "[-]"
-					progressInfo = fmt.Sprintf("%s / %s", formatSize(progress.downloadedBytes), formatSize(progress.totalBytes))
-				} else {
-					status = "[ ]"
-					progressInfo = fmt.Sprintf("%s / %s", formatSize(0), formatSize(asset.Size))
-				}
-			} else {
-				// Not yet started
-				status = "[ ]"
-				progressInfo = fmt.Sprintf("%s / %s", formatSize(0), formatSize(asset.Size))
-			}
-
-			// Format the line with proper spacing
-			s += fmt.Sprintf("%-40s %-15s %-30s %s\n",
-				truncateString(asset.Name, 40),
-				status,
-				truncateString(asset.ReleaseTag, 30),
-				progressInfo)
-		}
-
-		s += "\n" + m.downloadResult + "\n"
-		return s
-	}
-
-	// If we are in confirmation state, display confirmation dialog
-	if m.confirming && m.confirmAsset != nil {
-		s := fmt.Sprintf("\nSelected artifact:\n")
-		s += fmt.Sprintf(" Name: %s\n", m.confirmAsset.Name)
-		s += fmt.Sprintf("  Release: %s\n", m.confirmAsset.ReleaseTag)
-		s += fmt.Sprintf(" Size: %s\n", m.confirmAsset.SizeStr)
-		s += fmt.Sprintf("\nDownload this file to the current folder? (y/N): ")
-		return s
-	}
-
-	if m.quitting {
+	switch {
+	case m.showReleases:
+		return m.viewRenderer.renderReleasesView(m)
+	case m.selectMode:
+		return m.viewRenderer.renderSelectModeView(m)
+	case m.downloading && len(m.downloadResults) > 0:
+		return m.viewRenderer.renderDownloadingView(m)
+	case m.downloading && m.downloadAsset != nil:
+		return m.viewRenderer.renderDownloadingView(m)
+	case m.downloadFinished:
+		return m.viewRenderer.renderFinishedView(m)
+	case m.confirming && m.confirmAsset != nil:
+		return m.viewRenderer.renderConfirmView(m)
+	case m.quitting:
 		return "Goodbye!\n"
-	}
-
-	if m.loading {
+	case m.loading:
 		return "Searching for available artifacts...\n"
-	}
-
-	if m.errorMsg != "" {
+	case m.errorMsg != "":
 		return fmt.Sprintf("Error: %s\n", m.errorMsg)
-	}
-
-	if len(m.assets) == 0 {
+	case len(m.assets) == 0:
 		return "No artifacts found\n"
+	default:
+		return m.viewRenderer.renderDefaultView(m)
 	}
-
-	s := "Select artifact for download:\n\n"
-
-	// Styles
-	selectedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("170")).Bold(true)
-	defaultStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("15"))
-	infoStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
-
-	// Display artifacts with height limit
-	const maxVisibleItems = 15
-	start := 0
-	end := len(m.assets)
-
-	if len(m.assets) > maxVisibleItems {
-		// Center the selected item
-		if m.cursor < maxVisibleItems/2 {
-			end = maxVisibleItems
-		} else if m.cursor > len(m.assets)-maxVisibleItems/2 {
-			start = len(m.assets) - maxVisibleItems
-		} else {
-			start = m.cursor - maxVisibleItems/2
-			end = start + maxVisibleItems
-		}
-	}
-
-	// Add scroll information if available
-	if start > 0 {
-		s += fmt.Sprintf("  ... %d more above\n", start)
-	}
-
-	for i := start; i < end && i < len(m.assets); i++ {
-		asset := m.assets[i]
-		if i == m.cursor {
-			s += selectedStyle.Render("> "+asset.DisplayLine) + "\n"
-		} else {
-			s += defaultStyle.Render("  "+asset.DisplayLine) + "\n"
-		}
-	}
-
-	// Add scroll information if available
-	if end < len(m.assets) {
-		s += fmt.Sprintf(" ... %d more below\n", len(m.assets)-end)
-	}
-
-	// Display additional information about the selected artifact
-	if len(m.assets) > 0 && m.cursor < len(m.assets) {
-		selectedAsset := m.assets[m.cursor]
-		s += "\n" + infoStyle.Render(fmt.Sprintf("Selected: %s", selectedAsset.Name)) + "\n"
-		s += infoStyle.Render(fmt.Sprintf("Release: %s", selectedAsset.ReleaseTag)) + "\n"
-		s += infoStyle.Render(fmt.Sprintf("Size: %s", selectedAsset.SizeStr)) + "\n"
-		s += infoStyle.Render(fmt.Sprintf("Created: %s", selectedAsset.FormattedDate)) + "\n"
-	}
-
-	s += "\nPress '↑/↓' or 'j/k' to navigate, 'enter' to select, 'q' or 'ctrl+c' to quit\n"
-
-	if m.downloading {
-		// Display tabular progress for all files in the queue
-		headerStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("231")).Bold(true)
-		s += headerStyle.Render("Filename                                 Status          Tag                            Progress") + "\n"
-		for i, asset := range m.downloadQueue {
-			status := "[ ]"
-			progressInfo := ""
-
-			if i < len(m.downloadsProgress) {
-				progress := m.downloadsProgress[i]
-				if progress.completed {
-					status = "[✓]"
-					// For completed downloads, show actual downloaded size
-					if progress.totalBytes > 0 {
-						progressInfo = fmt.Sprintf("%s / %s", formatSize(progress.totalBytes), formatSize(progress.totalBytes))
-					} else if asset.Size > 0 {
-						progressInfo = fmt.Sprintf("%s / %s", formatSize(asset.Size), formatSize(asset.Size))
-					} else {
-						// File downloaded but size was unknown, try to get actual size from filesystem
-						progressInfo = formatSize(progress.downloadedBytes) + " / " + formatSize(progress.downloadedBytes)
-					}
-				} else if progress.downloadedBytes > 0 || progress.totalBytes > 0 {
-					status = "[-]"
-					// Show progress with the best available size information
-					totalSize := progress.totalBytes
-					if totalSize == 0 && asset.Size > 0 {
-						totalSize = asset.Size
-					}
-					if totalSize > 0 {
-						progressInfo = fmt.Sprintf("%s / %s", formatSize(progress.downloadedBytes), formatSize(totalSize))
-					} else {
-						progressInfo = formatSize(progress.downloadedBytes) + " / Unknown"
-					}
-				} else {
-					status = "[ ]"
-					if asset.Size > 0 {
-						progressInfo = fmt.Sprintf("%s / %s", formatSize(0), formatSize(asset.Size))
-					} else {
-						progressInfo = "0B / Unknown"
-					}
-				}
-			} else {
-				// Not yet started
-				status = "[ ]"
-				if asset.Size > 0 {
-					progressInfo = fmt.Sprintf("%s / %s", formatSize(0), formatSize(asset.Size))
-				} else {
-					progressInfo = "0B / Unknown"
-				}
-			}
-
-			// Format the line with proper spacing
-			s += fmt.Sprintf("%-40s %-15s %-30s %s\n",
-				truncateString(asset.Name, 40),
-				status,
-				truncateString(asset.ReleaseTag, 30),
-				progressInfo)
-		}
-	}
-
-	return s
-}
-
-// Custom messages
-type errorMsg string
-
-type releasesData struct {
-	assets   []AssetInfo
-	releases []Release
-}
-
-type releasesMsg releasesData
-type downloadConfirmMsg AssetInfo
-type downloadProgressMsg string
-type downloadCompleteMsg string
-type downloadErrorMsg string
-type cancelDownloadMsg struct{}
-
-// startDownloadProgressMsg message to start download progress updates
-type startDownloadProgressMsg struct {
-	asset AssetInfo
-}
-
-// downloadProgressUpdateMsg message for updating download progress
-type downloadProgressUpdateMsg struct {
-	totalBytes    int64
-	expectedBytes int64
-}
-
-// updateDownloadProgressMsg message to update download progress
-type updateDownloadProgressMsg struct {
-	asset AssetInfo
 }
 
 // fetchReleases get list of releases
@@ -936,6 +866,8 @@ func fetchReleases() tea.Msg {
 	}
 
 	var assets []AssetInfo
+	formatter := AssetFormatter{}
+
 	for _, release := range releases {
 		for _, asset := range release.Assets {
 			// Use asset mask from config or default to "*.tag.gz"
@@ -957,27 +889,8 @@ func fetchReleases() tea.Msg {
 
 			// Check if asset name matches the mask
 			if strings.HasPrefix(asset.Name, prefix) && strings.HasSuffix(asset.Name, suffix) {
-				// Format creation date
-				formattedDate := formatCreatedAt(asset.CreatedAt)
-
-				// Format file size
-				sizeStr := formatSize(asset.Size)
-
-				displayLine := fmt.Sprintf("[%s] %s (%s, %s)", release.TagName, asset.Name, sizeStr, formattedDate)
-
-				assets = append(assets, AssetInfo{
-					Name:          asset.Name,
-					ID:            asset.ID,
-					URL:           asset.URL,
-					DownloadURL:   asset.BrowserDownloadURL,
-					Size:          asset.Size,
-					CreatedAt:     asset.CreatedAt,
-					ReleaseTag:    release.TagName,
-					ReleaseName:   release.Name,
-					FormattedDate: formattedDate,
-					SizeStr:       sizeStr,
-					DisplayLine:   displayLine,
-				})
+				assetInfo := formatter.FormatAssetInfo(asset, release)
+				assets = append(assets, assetInfo)
 			}
 		}
 	}

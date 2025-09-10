@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -66,7 +65,7 @@ type AssetInfo struct {
 	DisplayLine   string
 }
 
-// DownloadProgress structure for tracking download progress for tabular display
+// DownloadProgress structure for tracking download progress
 type DownloadProgress struct {
 	downloadedBytes int64
 	totalBytes      int64
@@ -94,6 +93,16 @@ func (pr *ProgressReader) Read(p []byte) (int, error) {
 	return n, err
 }
 
+// ViewState represents the current state of the application
+type ViewState int
+
+const (
+	StateReleases ViewState = iota
+	StateAssets
+	StateDownloading
+	StateFinished
+)
+
 // NavigationHandler handles common navigation keys
 type NavigationHandler struct {
 	cursor   *int
@@ -114,6 +123,206 @@ func (nh NavigationHandler) HandleKey(key string) bool {
 		return true
 	}
 	return false
+}
+
+// DownloadQueue manages the download queue and progress
+type DownloadQueue struct {
+	assets       []AssetInfo
+	progress     []DownloadProgress
+	currentIndex int
+}
+
+func (dq *DownloadQueue) Add(asset AssetInfo) {
+	dq.assets = append(dq.assets, asset)
+	dq.progress = append(dq.progress, DownloadProgress{})
+}
+
+func (dq *DownloadQueue) AddMultiple(assets []AssetInfo) {
+	for _, asset := range assets {
+		dq.Add(asset)
+	}
+}
+
+func (dq *DownloadQueue) GetCurrent() *AssetInfo {
+	if dq.currentIndex >= 0 && dq.currentIndex < len(dq.assets) {
+		return &dq.assets[dq.currentIndex]
+	}
+	return nil
+}
+
+func (dq *DownloadQueue) UpdateProgress(downloaded, total int64) {
+	if dq.currentIndex >= 0 && dq.currentIndex < len(dq.progress) {
+		dq.progress[dq.currentIndex] = DownloadProgress{
+			downloadedBytes: downloaded,
+			totalBytes:      total,
+			completed:       downloaded >= total && total > 0,
+		}
+	}
+}
+
+func (dq *DownloadQueue) CompleteCurrentDownload(actualSize int64) {
+	if dq.currentIndex >= 0 && dq.currentIndex < len(dq.progress) {
+		finalSize := actualSize
+		if finalSize == 0 {
+			finalSize = dq.assets[dq.currentIndex].Size
+		}
+		if finalSize == 0 {
+			finalSize = dq.progress[dq.currentIndex].downloadedBytes
+		}
+
+		dq.progress[dq.currentIndex] = DownloadProgress{
+			downloadedBytes: finalSize,
+			totalBytes:      finalSize,
+			completed:       true,
+		}
+	}
+}
+
+func (dq *DownloadQueue) NextDownload() bool {
+	dq.currentIndex++
+	return dq.currentIndex < len(dq.assets)
+}
+
+func (dq *DownloadQueue) IsEmpty() bool {
+	return len(dq.assets) == 0
+}
+
+func (dq *DownloadQueue) Reset() {
+	dq.assets = []AssetInfo{}
+	dq.progress = []DownloadProgress{}
+	dq.currentIndex = 0
+}
+
+// UnifiedListView handles both releases and assets display
+type UnifiedListView struct {
+	items        []interface{}
+	cursor       int
+	selected     []bool
+	multiSelect  bool
+	title        string
+	instructions string
+}
+
+func (ulv *UnifiedListView) SetReleases(releases []Release) {
+	ulv.items = make([]interface{}, len(releases))
+	for i, release := range releases {
+		ulv.items[i] = release
+	}
+	ulv.cursor = 0
+	ulv.selected = nil
+	ulv.multiSelect = false
+	ulv.title = "Select release:"
+	ulv.instructions = "Press '↑/↓' or 'j/k' to navigate, 'enter' to select, 'q' or 'ctrl+c' to quit"
+}
+
+func (ulv *UnifiedListView) SetAssets(assets []AssetInfo) {
+	ulv.items = make([]interface{}, len(assets))
+	for i, asset := range assets {
+		ulv.items[i] = asset
+	}
+	ulv.cursor = 0
+	ulv.selected = make([]bool, len(assets))
+	ulv.multiSelect = true
+	ulv.title = "Select assets to download (press space to select, enter to download):"
+	ulv.instructions = "Press '↑/↓' or 'j/k' to navigate, 'space' to select/deselect, 'enter' to download, 'q' or 'ctrl+c' to quit"
+}
+
+func (ulv *UnifiedListView) GetSelectedCount() int {
+	if !ulv.multiSelect {
+		return 0
+	}
+	count := 0
+	for _, selected := range ulv.selected {
+		if selected {
+			count++
+		}
+	}
+	return count
+}
+
+func (ulv *UnifiedListView) ToggleSelection() {
+	if ulv.multiSelect && ulv.cursor < len(ulv.selected) {
+		ulv.selected[ulv.cursor] = !ulv.selected[ulv.cursor]
+	}
+}
+
+func (ulv *UnifiedListView) GetSelectedAssets() []AssetInfo {
+	var result []AssetInfo
+	if !ulv.multiSelect {
+		return result
+	}
+
+	for i, selected := range ulv.selected {
+		if selected && i < len(ulv.items) {
+			if asset, ok := ulv.items[i].(AssetInfo); ok {
+				result = append(result, asset)
+			}
+		}
+	}
+	return result
+}
+
+func (ulv *UnifiedListView) GetCurrentAsset() *AssetInfo {
+	if ulv.cursor < len(ulv.items) {
+		if asset, ok := ulv.items[ulv.cursor].(AssetInfo); ok {
+			return &asset
+		}
+	}
+	return nil
+}
+
+func (ulv *UnifiedListView) GetCurrentRelease() *Release {
+	if ulv.cursor < len(ulv.items) {
+		if release, ok := ulv.items[ulv.cursor].(Release); ok {
+			return &release
+		}
+	}
+	return nil
+}
+
+func (ulv *UnifiedListView) Render() string {
+	s := ulv.title + "\n\n"
+
+	// Styles
+	selectedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("170")).Bold(true)
+	defaultStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("15"))
+	selectedAssetStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("46")) // Green
+	infoStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+
+	// Display items
+	for i, item := range ulv.items {
+		var line string
+		var selectionMarker string
+
+		if release, ok := item.(Release); ok {
+			line = fmt.Sprintf("[%s] %s", release.TagName, release.Name)
+		} else if asset, ok := item.(AssetInfo); ok {
+			line = asset.DisplayLine
+			if ulv.multiSelect {
+				selectionMarker = " [ ] "
+				if i < len(ulv.selected) && ulv.selected[i] {
+					selectionMarker = selectedAssetStyle.Render(" [x] ")
+				}
+			}
+		}
+
+		if i == ulv.cursor {
+			s += selectedStyle.Render("> "+selectionMarker+line) + "\n"
+		} else {
+			s += defaultStyle.Render("  "+selectionMarker+line) + "\n"
+		}
+	}
+
+	// Display selection info for multi-select mode
+	if ulv.multiSelect {
+		selectedCount := ulv.GetSelectedCount()
+		if selectedCount > 0 {
+			s += "\n" + infoStyle.Render(fmt.Sprintf("%d asset(s) selected", selectedCount)) + "\n"
+		}
+	}
+
+	s += "\n" + ulv.instructions + "\n"
+	return s
 }
 
 // ProgressFormatter handles progress display formatting
@@ -209,162 +418,6 @@ func (af AssetFormatter) createDisplayLineWithoutTag(name, sizeStr, formattedDat
 	return fmt.Sprintf("%s (%s, %s)", name, sizeStr, formattedDate)
 }
 
-// ViewRenderer handles different view states
-type ViewRenderer struct {
-	progressFormatter ProgressFormatter
-}
-
-func (vr ViewRenderer) renderReleasesView(m model) string {
-	s := "Select release:\n\n"
-
-	// Styles
-	selectedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("170")).Bold(true)
-	defaultStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("15"))
-
-	// Display releases
-	for i, release := range m.releases {
-		line := fmt.Sprintf("[%s] %s", release.TagName, release.Name)
-		if i == m.releaseCursor {
-			s += selectedStyle.Render("> "+line) + "\n"
-		} else {
-			s += defaultStyle.Render("  "+line) + "\n"
-		}
-	}
-
-	s += "\nPress '↑/↓' or 'j/k' to navigate, 'enter' to select, 'q' or 'ctrl+c' to quit\n"
-	return s
-}
-
-func (vr ViewRenderer) renderSelectModeView(m model) string {
-	s := "Select assets to download (press space to select, enter to download):\n\n"
-
-	// Styles
-	selectedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("170")).Bold(true)
-	defaultStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("15"))
-	selectedAssetStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("46")) // Green
-	infoStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
-
-	// Display assets with selection markers
-	for i, asset := range m.assets {
-		selectionMarker := " [ ] "
-		if i < len(m.selectedAssets) && m.selectedAssets[i] {
-			selectionMarker = selectedAssetStyle.Render(" [x] ")
-		}
-
-		if i == m.cursor {
-			s += selectedStyle.Render("> "+selectionMarker+asset.DisplayLine) + "\n"
-		} else {
-			s += defaultStyle.Render("  "+selectionMarker+asset.DisplayLine) + "\n"
-		}
-	}
-
-	// Display information about selected assets
-	selectedCount := 0
-	for _, selected := range m.selectedAssets {
-		if selected {
-			selectedCount++
-		}
-	}
-
-	if selectedCount > 0 {
-		s += "\n" + infoStyle.Render(fmt.Sprintf("%d asset(s) selected", selectedCount)) + "\n"
-	}
-
-	s += "\nPress '↑/↓' or 'j/k' to navigate, 'space' to select/deselect, 'enter' to download, 'q' or 'ctrl+c' to quit\n"
-	return s
-}
-
-func (vr ViewRenderer) renderDownloadingView(m model) string {
-	s := "Download progress:\n\n"
-
-	if len(m.downloadResults) > 0 {
-		for _, result := range m.downloadResults {
-			s += result + "\n"
-		}
-	}
-
-	s += vr.progressFormatter.RenderProgressTable(m.downloadQueue, m.downloadsProgress)
-	return s
-}
-
-func (vr ViewRenderer) renderFinishedView(m model) string {
-	s := "Download results:\n\n"
-	s += vr.progressFormatter.RenderProgressTable(m.downloadQueue, m.downloadsProgress)
-	s += "\n" + m.downloadResult + "\n"
-	return s
-}
-
-func (vr ViewRenderer) renderConfirmView(m model) string {
-	s := fmt.Sprintf("\nSelected artifact:\n")
-	s += fmt.Sprintf(" Name: %s\n", m.confirmAsset.Name)
-	s += fmt.Sprintf("  Release: %s\n", m.confirmAsset.ReleaseTag)
-	s += fmt.Sprintf(" Size: %s\n", m.confirmAsset.SizeStr)
-	s += fmt.Sprintf("\nDownload this file to the current folder? (y/N): ")
-	return s
-}
-
-func (vr ViewRenderer) renderDefaultView(m model) string {
-	s := "Select artifact for download:\n\n"
-
-	// Styles
-	selectedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("170")).Bold(true)
-	defaultStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("15"))
-	infoStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
-
-	// Display artifacts with height limit
-	const maxVisibleItems = 15
-	start := 0
-	end := len(m.assets)
-
-	if len(m.assets) > maxVisibleItems {
-		// Center the selected item
-		if m.cursor < maxVisibleItems/2 {
-			end = maxVisibleItems
-		} else if m.cursor > len(m.assets)-maxVisibleItems/2 {
-			start = len(m.assets) - maxVisibleItems
-		} else {
-			start = m.cursor - maxVisibleItems/2
-			end = start + maxVisibleItems
-		}
-	}
-
-	// Add scroll information if available
-	if start > 0 {
-		s += fmt.Sprintf("  ... %d more above\n", start)
-	}
-
-	for i := start; i < end && i < len(m.assets); i++ {
-		asset := m.assets[i]
-		if i == m.cursor {
-			s += selectedStyle.Render("> "+asset.DisplayLine) + "\n"
-		} else {
-			s += defaultStyle.Render("  "+asset.DisplayLine) + "\n"
-		}
-	}
-
-	// Add scroll information if available
-	if end < len(m.assets) {
-		s += fmt.Sprintf(" ... %d more below\n", len(m.assets)-end)
-	}
-
-	// Display additional information about the selected artifact
-	if len(m.assets) > 0 && m.cursor < len(m.assets) {
-		selectedAsset := m.assets[m.cursor]
-		s += "\n" + infoStyle.Render(fmt.Sprintf("Selected: %s", selectedAsset.Name)) + "\n"
-		s += infoStyle.Render(fmt.Sprintf("Release: %s", selectedAsset.ReleaseTag)) + "\n"
-		s += infoStyle.Render(fmt.Sprintf("Size: %s", selectedAsset.SizeStr)) + "\n"
-		s += infoStyle.Render(fmt.Sprintf("Created: %s", selectedAsset.FormattedDate)) + "\n"
-	}
-
-	s += "\nPress '↑/↓' or 'j/k' to navigate, 'enter' to select, 'q' or 'ctrl+c' to quit\n"
-
-	if m.downloading {
-		s += vr.progressFormatter.RenderProgressTable(m.downloadQueue, m.downloadsProgress)
-	}
-
-	return s
-}
-
 // Custom messages
 type errorMsg string
 
@@ -374,8 +427,6 @@ type releasesData struct {
 }
 
 type releasesMsg releasesData
-type downloadConfirmMsg AssetInfo
-type downloadProgressMsg string
 type downloadCompleteMsg string
 type downloadErrorMsg string
 type cancelDownloadMsg struct{}
@@ -383,12 +434,6 @@ type cancelDownloadMsg struct{}
 // startDownloadProgressMsg message to start download progress updates
 type startDownloadProgressMsg struct {
 	asset AssetInfo
-}
-
-// downloadProgressUpdateMsg message for updating download progress
-type downloadProgressUpdateMsg struct {
-	totalBytes    int64
-	expectedBytes int64
 }
 
 // updateDownloadProgressMsg message to update download progress
@@ -404,44 +449,30 @@ func truncateString(s string, maxLen int) string {
 	return s[:maxLen-3] + "..."
 }
 
-// Model structure for bubbletea
+// Model structure for bubbletea - simplified unified version
 type model struct {
-	// Original fields for asset selection mode
-	assets                  []AssetInfo
-	cursor                  int
-	quitting                bool
-	loading                 bool
-	errorMsg                string
-	downloading             bool
-	downloadMsg             string
-	confirming              bool
-	confirmAsset            *AssetInfo
-	downloadProgress        *DownloadProgress
-	downloadAsset           *AssetInfo
-	currentDownloadProgress int64
-	downloadFinished        bool
-	downloadSuccess         bool
-	downloadResult          string
+	// Unified state management
+	state    ViewState
+	loading  bool
+	quitting bool
+	errorMsg string
 
-	// New fields for release selection mode
-	releases      []Release
-	releaseCursor int
-	showReleases  bool // Flag to indicate we are showing releases
+	// Unified list view
+	listView UnifiedListView
 
-	// New fields for multi-asset selection mode
-	selectedAssets   []bool // Slice to track which assets are selected
-	selectMode       bool   // Flag to indicate we are in multi-select mode
-	selectedAssetMsg string // Message to show which assets are selected
-
-	// New fields for sequential download mode
-	downloadQueue        []AssetInfo        // Queue of assets to download
-	currentDownloadIndex int                // Index of currently downloading asset
-	downloadResults      []string           // Results of downloads
-	downloadsProgress    []DownloadProgress // Progress of each download in the queue
+	// Download queue (always used, even for single downloads)
+	downloadQueue    DownloadQueue
+	downloading      bool
+	downloadFinished bool
+	downloadSuccess  bool
+	downloadResult   string
 
 	// Helper components
-	viewRenderer   ViewRenderer
-	assetFormatter AssetFormatter
+	assetFormatter    AssetFormatter
+	progressFormatter ProgressFormatter
+
+	// Legacy fields for compatibility during transition
+	releases []Release
 }
 
 // Init bubbletea initialization
@@ -449,139 +480,10 @@ func (m model) Init() tea.Cmd {
 	return fetchReleases
 }
 
-// Update bubbletea message processing
+// Update bubbletea message processing - unified version
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
-		// If we are in confirmation state, handle special keys
-		if m.confirming {
-			switch msg.String() {
-			case "y", "Y":
-				// Confirm download
-				m.confirming = false
-				asset := *m.confirmAsset
-				m.confirmAsset = nil
-				return m, tea.Batch(
-					func() tea.Msg {
-						return startDownloadProgressMsg{asset: asset}
-					},
-					downloadAsset(asset),
-				)
-			case "n", "N", "esc", "q", "ctrl+c":
-				// Cancel download
-				m.confirming = false
-				m.confirmAsset = nil
-				return m, nil
-			default:
-				// Ignore other keys
-				return m, nil
-			}
-		}
-
-		// Handle keys when showing releases
-		if m.showReleases {
-			navHandler := NavigationHandler{
-				cursor:   &m.releaseCursor,
-				maxItems: len(m.releases),
-			}
-
-			if navHandler.HandleKey(msg.String()) {
-				return m, nil
-			}
-
-			switch msg.String() {
-			case "ctrl+c", "q":
-				m.quitting = true
-				return m, tea.Quit
-			case "enter", " ":
-				if len(m.releases) > 0 {
-					// Show assets for selected release
-					m.showReleases = false
-					m.selectMode = true
-					m.assets = []AssetInfo{}
-
-					// Populate assets for selected release
-					release := m.releases[m.releaseCursor]
-					for _, asset := range release.Assets {
-						assetInfo := m.assetFormatter.FormatAssetInfo(asset, release)
-						assetInfo.DisplayLine = m.assetFormatter.createDisplayLineWithoutTag(asset.Name, assetInfo.SizeStr, assetInfo.FormattedDate)
-						m.assets = append(m.assets, assetInfo)
-					}
-
-					// Initialize selected assets slice
-					m.selectedAssets = make([]bool, len(m.assets))
-					m.cursor = 0
-				}
-			}
-			return m, nil
-		}
-
-		// Handle keys when in multi-select mode
-		if m.selectMode {
-			navHandler := NavigationHandler{
-				cursor:   &m.cursor,
-				maxItems: len(m.assets),
-			}
-
-			if navHandler.HandleKey(msg.String()) {
-				return m, nil
-			}
-
-			switch msg.String() {
-			case "ctrl+c", "q":
-				m.quitting = true
-				return m, tea.Quit
-			case " ":
-				// Toggle selection
-				if len(m.selectedAssets) > m.cursor {
-					m.selectedAssets[m.cursor] = !m.selectedAssets[m.cursor]
-				}
-			case "enter":
-				// Start downloading selected assets
-				m.selectMode = false
-				m.downloadQueue = []AssetInfo{}
-
-				// Build download queue
-				for i, selected := range m.selectedAssets {
-					if selected && i < len(m.assets) {
-						m.downloadQueue = append(m.downloadQueue, m.assets[i])
-					}
-				}
-
-				// If no assets selected, select the current one
-				if len(m.downloadQueue) == 0 && len(m.assets) > 0 && m.cursor < len(m.assets) {
-					m.downloadQueue = append(m.downloadQueue, m.assets[m.cursor])
-				}
-
-				m.downloadResults = []string{}
-				m.currentDownloadIndex = 0
-				m.downloadsProgress = make([]DownloadProgress, len(m.downloadQueue))
-
-				// Start downloading if we have assets in queue
-				if len(m.downloadQueue) > 0 {
-					asset := m.downloadQueue[0]
-					return m, tea.Batch(
-						func() tea.Msg {
-							return startDownloadProgressMsg{asset: asset}
-						},
-						downloadAsset(asset),
-					)
-				}
-				return m, nil
-			}
-			return m, nil
-		}
-
-		// Regular key handling
-		navHandler := NavigationHandler{
-			cursor:   &m.cursor,
-			maxItems: len(m.assets),
-		}
-
-		if navHandler.HandleKey(msg.String()) {
-			return m, nil
-		}
-
 		switch msg.String() {
 		case "ctrl+c", "q":
 			if m.downloading {
@@ -596,118 +498,67 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.quitting = true
 				return m, tea.Quit
 			}
-		case "enter", " ":
-			if len(m.assets) > 0 {
-				// Confirm download
-				return m, tea.Batch(
-					tea.Printf("Selected artifact: %s", m.assets[m.cursor].Name),
-					confirmDownload(m.assets[m.cursor]),
-				)
-			}
 		}
+
+		// Handle state-specific navigation and actions
+		switch m.state {
+		case StateReleases:
+			return m.handleReleasesInput(msg.String())
+		case StateAssets:
+			return m.handleAssetsInput(msg.String())
+		case StateDownloading, StateFinished:
+			// No input handling during download states
+			return m, nil
+		}
+
 	case releasesMsg:
-		// Check if we have releases or assets
-		if len(msg.releases) > 0 && len(msg.assets) == 0 {
-			// Show releases list
-			m.releases = msg.releases
-			m.showReleases = true
-			m.releaseCursor = 0
-		} else {
-			// Show assets list (original behavior)
-			m.assets = msg.assets
+		// Check if we have filtered assets (ASSET_MASK was used)
+		if len(msg.assets) > 0 {
+			// Show filtered assets directly
+			m.listView.SetAssets(msg.assets)
+			m.state = StateAssets
 			m.loading = false
-			sort.Slice(m.assets, func(i, j int) bool {
-				return m.assets[i].CreatedAt > m.assets[j].CreatedAt
-			})
+		} else {
+			// Show releases list
+			m.listView.SetReleases(msg.releases)
+			m.releases = msg.releases
+			m.state = StateReleases
+			m.loading = false
 		}
+
 	case errorMsg:
 		m.errorMsg = string(msg)
 		m.loading = false
-	case downloadConfirmMsg:
-		asset := AssetInfo(msg)
-		// Set confirmation state
-		m.confirming = true
-		m.confirmAsset = &asset
-		return m, nil
+
 	case startDownloadProgressMsg:
 		// Start download progress updates
-		m.downloadAsset = &msg.asset
 		m.downloading = true
-		// Start a ticker to send progress updates
+		m.state = StateDownloading
 		return m, tea.Tick(time.Second, func(t time.Time) tea.Msg {
-			if m.downloadAsset != nil {
-				return updateDownloadProgressMsg{asset: *m.downloadAsset}
+			if !m.downloadQueue.IsEmpty() {
+				return updateDownloadProgressMsg{asset: msg.asset}
 			}
 			return nil
 		})
+
 	case updateDownloadProgressMsg:
 		// Update download progress
-		if m.downloadAsset != nil {
-			// Get actual progress from global variable
-			downloadProgressMutex.Lock()
-			progress := downloadProgress
-			downloadProgressMutex.Unlock()
+		downloadProgressMutex.Lock()
+		progress := downloadProgress
+		downloadProgressMutex.Unlock()
 
-			// Send progress update
-			return m, tea.Batch(
-				func() tea.Msg {
-					return downloadProgressUpdateMsg{
-						totalBytes:    progress,
-						expectedBytes: m.downloadAsset.Size,
-					}
-				},
-				tea.Tick(time.Second, func(t time.Time) tea.Msg {
-					if m.downloadAsset != nil {
-						return updateDownloadProgressMsg{asset: *m.downloadAsset}
-					}
-					return nil
-				}),
-			)
-		}
-		return m, nil
-	case downloadProgressMsg:
-		m.downloading = true
-		m.downloadMsg = string(msg)
+		// Update download queue progress
+		m.downloadQueue.UpdateProgress(progress, msg.asset.Size)
 
-		// Parse download progress to update progress bar
-		// Expected format: "Downloading filename: size / total"
-		parts := strings.Split(string(msg), ":")
-		if len(parts) == 2 {
-			progressParts := strings.Split(parts[1], "/")
-			if len(progressParts) == 2 {
-				// Remove spaces and parse sizes
-				downloadedStr := strings.TrimSpace(progressParts[0])
-				totalStr := strings.TrimSpace(progressParts[1])
-
-				// Parse downloaded size
-				downloadedBytes := parseSize(downloadedStr)
-				totalBytes := parseSize(totalStr)
-
-				// Update download state for progress bar
-				m.downloadProgress = &DownloadProgress{
-					downloadedBytes: downloadedBytes,
-					totalBytes:      totalBytes,
-				}
+		return m, tea.Tick(time.Second, func(t time.Time) tea.Msg {
+			if m.downloading {
+				return updateDownloadProgressMsg{asset: msg.asset}
 			}
-		}
-	case downloadProgressUpdateMsg:
-		// Update download state for progress bar
-		m.downloadProgress = &DownloadProgress{
-			downloadedBytes: msg.totalBytes,
-			totalBytes:      msg.expectedBytes,
-		}
+			return nil
+		})
 
-		// Update download progress for tabular display
-		if m.currentDownloadIndex >= 0 && m.currentDownloadIndex < len(m.downloadsProgress) {
-			m.downloadsProgress[m.currentDownloadIndex] = DownloadProgress{
-				downloadedBytes: msg.totalBytes,
-				totalBytes:      msg.expectedBytes,
-				completed:       msg.totalBytes >= msg.expectedBytes,
-			}
-		}
 	case downloadCompleteMsg:
 		m.downloading = false
-		m.downloadAsset = nil
 
 		// Get actual file size from filesystem for completed download
 		var actualSize int64
@@ -716,104 +567,170 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		// Mark current download as completed with actual file size
-		if m.currentDownloadIndex >= 0 && m.currentDownloadIndex < len(m.downloadsProgress) {
-			asset := m.downloadQueue[m.currentDownloadIndex]
-			// Use actual file size if available, otherwise fall back to asset size or downloaded bytes
-			finalSize := actualSize
-			if finalSize == 0 {
-				finalSize = asset.Size
-			}
-			if finalSize == 0 {
-				finalSize = m.downloadsProgress[m.currentDownloadIndex].downloadedBytes
-			}
-
-			m.downloadsProgress[m.currentDownloadIndex] = DownloadProgress{
-				downloadedBytes: finalSize,
-				totalBytes:      finalSize,
-				completed:       true,
-			}
-		}
+		m.downloadQueue.CompleteCurrentDownload(actualSize)
 
 		// Move to next download in queue
-		m.currentDownloadIndex++
-		if m.currentDownloadIndex < len(m.downloadQueue) {
+		if m.downloadQueue.NextDownload() {
 			// Start next download
-			asset := m.downloadQueue[m.currentDownloadIndex]
+			asset := m.downloadQueue.GetCurrent()
 			return m, tea.Batch(
 				func() tea.Msg {
-					return startDownloadProgressMsg{asset: asset}
+					return startDownloadProgressMsg{asset: *asset}
 				},
-				downloadAsset(asset),
+				downloadAsset(*asset),
 			)
 		} else {
 			// All downloads completed
 			m.downloadFinished = true
 			m.downloadSuccess = true
 			m.downloadResult = "All files downloaded successfully"
+			m.state = StateFinished
 			// Exit after showing results
 			return m, tea.Quit
 		}
+
 	case downloadErrorMsg:
 		m.downloading = false
-		m.downloadAsset = nil
 
 		// Move to next download in queue
-		m.currentDownloadIndex++
-		if m.currentDownloadIndex < len(m.downloadQueue) {
+		if m.downloadQueue.NextDownload() {
 			// Start next download
-			asset := m.downloadQueue[m.currentDownloadIndex]
+			asset := m.downloadQueue.GetCurrent()
 			return m, tea.Batch(
 				func() tea.Msg {
-					return startDownloadProgressMsg{asset: asset}
+					return startDownloadProgressMsg{asset: *asset}
 				},
-				downloadAsset(asset),
+				downloadAsset(*asset),
 			)
 		} else {
 			// All downloads completed (with errors)
 			m.downloadFinished = true
 			m.downloadSuccess = false
 			m.downloadResult = "Downloads completed with errors"
+			m.state = StateFinished
 			// Exit after showing results
 			return m, tea.Quit
 		}
+
 	case cancelDownloadMsg:
 		m.downloading = false
-		m.downloadAsset = nil
 		m.errorMsg = "Download cancelled by user"
+		m.state = StateAssets
 	}
 
 	return m, nil
 }
 
-// View interface display
+// Handle input when in releases state
+func (m model) handleReleasesInput(key string) (tea.Model, tea.Cmd) {
+	navHandler := NavigationHandler{
+		cursor:   &m.listView.cursor,
+		maxItems: len(m.listView.items),
+	}
+
+	if navHandler.HandleKey(key) {
+		return m, nil
+	}
+
+	switch key {
+	case "enter", " ":
+		if selectedRelease := m.listView.GetCurrentRelease(); selectedRelease != nil {
+			// Convert release assets to AssetInfo and show asset selection
+			var assets []AssetInfo
+			for _, asset := range selectedRelease.Assets {
+				assetInfo := m.assetFormatter.FormatAssetInfo(asset, *selectedRelease)
+				assetInfo.DisplayLine = m.assetFormatter.createDisplayLineWithoutTag(asset.Name, assetInfo.SizeStr, assetInfo.FormattedDate)
+				assets = append(assets, assetInfo)
+			}
+
+			m.listView.SetAssets(assets)
+			m.state = StateAssets
+		}
+	}
+
+	return m, nil
+}
+
+// Handle input when in assets state
+func (m model) handleAssetsInput(key string) (tea.Model, tea.Cmd) {
+	navHandler := NavigationHandler{
+		cursor:   &m.listView.cursor,
+		maxItems: len(m.listView.items),
+	}
+
+	if navHandler.HandleKey(key) {
+		return m, nil
+	}
+
+	switch key {
+	case " ":
+		// Toggle selection
+		m.listView.ToggleSelection()
+
+	case "enter":
+		// Start downloading selected assets or current asset if none selected
+		selectedAssets := m.listView.GetSelectedAssets()
+
+		// If no assets selected, add current asset to queue
+		if len(selectedAssets) == 0 {
+			if currentAsset := m.listView.GetCurrentAsset(); currentAsset != nil {
+				selectedAssets = []AssetInfo{*currentAsset}
+			}
+		}
+
+		if len(selectedAssets) > 0 {
+			// Initialize download queue with selected assets
+			m.downloadQueue.Reset()
+			m.downloadQueue.AddMultiple(selectedAssets)
+
+			// Start first download
+			if !m.downloadQueue.IsEmpty() {
+				asset := m.downloadQueue.GetCurrent()
+				return m, tea.Batch(
+					func() tea.Msg {
+						return startDownloadProgressMsg{asset: *asset}
+					},
+					downloadAsset(*asset),
+				)
+			}
+		}
+	}
+
+	return m, nil
+}
+
+// View interface display - unified version
 func (m model) View() string {
+	switch m.state {
+	case StateReleases:
+		return m.listView.Render()
+	case StateAssets:
+		return m.listView.Render()
+	case StateDownloading:
+		s := "Download progress:\n\n"
+		s += m.progressFormatter.RenderProgressTable(m.downloadQueue.assets, m.downloadQueue.progress)
+		return s
+	case StateFinished:
+		s := "Download results:\n\n"
+		s += m.progressFormatter.RenderProgressTable(m.downloadQueue.assets, m.downloadQueue.progress)
+		s += "\n" + m.downloadResult + "\n"
+		return s
+	}
+
+	// Default states
 	switch {
-	case m.showReleases:
-		return m.viewRenderer.renderReleasesView(m)
-	case m.selectMode:
-		return m.viewRenderer.renderSelectModeView(m)
-	case m.downloading && len(m.downloadResults) > 0:
-		return m.viewRenderer.renderDownloadingView(m)
-	case m.downloading && m.downloadAsset != nil:
-		return m.viewRenderer.renderDownloadingView(m)
-	case m.downloadFinished:
-		return m.viewRenderer.renderFinishedView(m)
-	case m.confirming && m.confirmAsset != nil:
-		return m.viewRenderer.renderConfirmView(m)
 	case m.quitting:
 		return "Goodbye!\n"
 	case m.loading:
 		return "Searching for available artifacts...\n"
 	case m.errorMsg != "":
 		return fmt.Sprintf("Error: %s\n", m.errorMsg)
-	case len(m.assets) == 0:
-		return "No artifacts found\n"
 	default:
-		return m.viewRenderer.renderDefaultView(m)
+		return "No artifacts found\n"
 	}
 }
 
-// fetchReleases get list of releases
+// fetchReleases get list of releases with ASSET_MASK filtering
 func fetchReleases() tea.Msg {
 	config, err := loadConfig()
 	if err != nil {
@@ -865,16 +782,14 @@ func fetchReleases() tea.Msg {
 		return releasesMsg{releases: releases}
 	}
 
+	// Filter assets by ASSET_MASK
 	var assets []AssetInfo
 	formatter := AssetFormatter{}
 
 	for _, release := range releases {
 		for _, asset := range release.Assets {
-			// Use asset mask from config or default to "*.tag.gz"
+			// Use asset mask from config
 			assetMask := config.AssetMask
-			if assetMask == "" {
-				assetMask = "*.tag.gz"
-			}
 
 			// Parse the mask into prefix and suffix
 			parts := strings.Split(assetMask, "*")
@@ -911,49 +826,6 @@ func formatCreatedAt(createdAt string) string {
 	return t.Format("2006-01-02 15:04")
 }
 
-// parseSize parse file size from string
-func parseSize(sizeStr string) int64 {
-	// Remove spaces
-	sizeStr = strings.TrimSpace(sizeStr)
-
-	// Handle "Unknown" case
-	if sizeStr == "Unknown" {
-		return 0
-	}
-
-	// Handle different units
-	var multiplier int64 = 1
-	var numberStr string
-
-	// Check for units
-	if strings.HasSuffix(sizeStr, "GB") {
-		multiplier = 1024 * 1024 * 1024
-		numberStr = strings.TrimSuffix(sizeStr, "GB")
-	} else if strings.HasSuffix(sizeStr, "MB") {
-		multiplier = 1024 * 1024
-		numberStr = strings.TrimSuffix(sizeStr, "MB")
-	} else if strings.HasSuffix(sizeStr, "KB") {
-		multiplier = 1024
-		numberStr = strings.TrimSuffix(sizeStr, "KB")
-	} else if strings.HasSuffix(sizeStr, "B") {
-		multiplier = 1
-		numberStr = strings.TrimSuffix(sizeStr, "B")
-	} else {
-		// No unit, assume bytes
-		numberStr = sizeStr
-	}
-
-	// Parse the number
-	numberStr = strings.TrimSpace(numberStr)
-	var number float64
-	if _, err := fmt.Sscanf(numberStr, "%f", &number); err != nil {
-		// If parsing fails, return 0
-		return 0
-	}
-
-	return int64(number * float64(multiplier))
-}
-
 // formatSize format file size
 func formatSize(size int64) string {
 	if size <= 0 {
@@ -969,13 +841,6 @@ func formatSize(size int64) string {
 		return fmt.Sprintf("%.1fKB", float64(size)/1024)
 	default:
 		return fmt.Sprintf("%dB", size)
-	}
-}
-
-// confirmDownload confirm download
-func confirmDownload(asset AssetInfo) tea.Cmd {
-	return func() tea.Msg {
-		return downloadConfirmMsg(asset)
 	}
 }
 
@@ -1044,11 +909,6 @@ func downloadAsset(asset AssetInfo) tea.Cmd {
 				downloadProgressMutex.Lock()
 				downloadProgress = downloaded
 				downloadProgressMutex.Unlock()
-
-				// Send progress update message
-				go func() {
-					// Simulate sending a message to update UI
-				}()
 			},
 		}
 
@@ -1142,10 +1002,10 @@ func main() {
 	downloadContext, downloadCancel = context.WithCancel(context.Background())
 	defer downloadCancel()
 
-	// Pass context to model
+	// Initialize unified model
 	m := model{
-		assets:  []AssetInfo{},
 		loading: true,
+		state:   StateReleases,
 	}
 
 	// Run bubbletea

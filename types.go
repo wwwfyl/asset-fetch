@@ -30,6 +30,7 @@ type Asset struct {
 	BrowserDownloadURL string `json:"browser_download_url"`
 	Size               int64  `json:"size"`
 	CreatedAt          string `json:"created_at"`
+	Digest             string `json:"digest"`
 }
 
 // Release structure for storing release information
@@ -47,6 +48,7 @@ type AssetInfo struct {
 	DownloadURL   string
 	Size          int64
 	CreatedAt     string
+	Digest        string
 	ReleaseTag    string
 	ReleaseName   string
 	FormattedDate string
@@ -158,6 +160,7 @@ const (
 	StateAssets
 	StateDownloading
 	StateFinished
+	StateChecksumVerification
 )
 
 // Custom messages
@@ -172,6 +175,13 @@ type releasesMsg releasesData
 type downloadCompleteMsg string
 type downloadErrorMsg string
 type cancelDownloadMsg struct{}
+
+// checksumVerifiedMsg message to indicate checksum verification result
+type checksumVerifiedMsg struct {
+	filename string
+	success  bool
+	err      string
+}
 
 // startDownloadProgressMsg message to start download progress updates
 type startDownloadProgressMsg struct {

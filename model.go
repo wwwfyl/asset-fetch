@@ -93,7 +93,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Start download progress updates
 		m.downloading = true
 		m.state = StateDownloading
-		return m, tea.Tick(time.Second, func(t time.Time) tea.Msg {
+		return m, tea.Tick(time.Second, func(tick time.Time) tea.Msg {
 			if !m.downloadQueue.IsEmpty() {
 				return updateDownloadProgressMsg{asset: msg.asset}
 			}
@@ -109,44 +109,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Update download queue progress
 		m.downloadQueue.UpdateProgress(progress, msg.asset.Size)
 
-		return m, tea.Tick(time.Second, func(t time.Time) tea.Msg {
+		return m, tea.Tick(time.Second, func(tick time.Time) tea.Msg {
 			if m.downloading {
 				return updateDownloadProgressMsg{asset: msg.asset}
 			}
 			return nil
 		})
-
-	case downloadCompleteMsg:
-		m.downloading = false
-
-		// Get actual file size from filesystem for completed download
-		var actualSize int64
-		if fileInfo, err := os.Stat(string(msg)); err == nil {
-			actualSize = fileInfo.Size()
-		}
-
-		// Mark current download as completed with actual file size
-		m.downloadQueue.CompleteCurrentDownload(actualSize)
-
-		// Move to next download in queue
-		if m.downloadQueue.NextDownload() {
-			// Start next download
-			asset := m.downloadQueue.GetCurrent()
-			return m, tea.Batch(
-				func() tea.Msg {
-					return startDownloadProgressMsg{asset: *asset}
-				},
-				downloadAsset(*asset),
-			)
-		} else {
-			// All downloads completed
-			m.downloadFinished = true
-			m.downloadSuccess = true
-			m.downloadResult = "All files downloaded successfully"
-			m.state = StateFinished
-			// Exit after showing results
-			return m, tea.Quit
-		}
 
 	case downloadErrorMsg:
 		m.downloading = false
@@ -175,6 +143,49 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.downloading = false
 		m.errorMsg = "Download cancelled by user"
 		m.state = StateAssets
+
+	case checksumVerifiedMsg:
+		m.downloading = false
+
+		// Get actual file size from filesystem for completed download
+		var actualSize int64
+		if fileInfo, err := os.Stat(msg.filename); err == nil {
+			actualSize = fileInfo.Size()
+		}
+
+		// Mark current download as completed with actual file size
+		m.downloadQueue.CompleteCurrentDownload(actualSize)
+
+		// Handle checksum verification result
+		if msg.success {
+			// Check if there are more downloads in the queue
+			if m.downloadQueue.NextDownload() {
+				// Start next download
+				asset := m.downloadQueue.GetCurrent()
+				return m, tea.Batch(
+					func() tea.Msg {
+						return startDownloadProgressMsg{asset: *asset}
+					},
+					downloadAsset(*asset),
+				)
+			} else {
+				// All downloads completed
+				m.downloadFinished = true
+				m.downloadSuccess = true
+				m.downloadResult = "All files downloaded and verified successfully"
+				m.state = StateFinished
+				// Exit after showing results
+				return m, tea.Quit
+			}
+		} else {
+			// Checksum verification failed
+			m.downloadFinished = true
+			m.downloadSuccess = false
+			m.downloadResult = fmt.Sprintf("Checksum verification failed for %s: %s", msg.filename, msg.err)
+			m.state = StateFinished
+			// Exit after showing results
+			return m, tea.Quit
+		}
 	}
 
 	return m, nil
@@ -273,6 +284,10 @@ func (m model) View() string {
 		s := "Download results:\n\n"
 		s += m.progressFormatter.RenderProgressTable(m.downloadQueue.assets, m.downloadQueue.progress)
 		s += "\n" + m.downloadResult + "\n"
+		return s
+	case StateChecksumVerification:
+		s := "Verifying checksums:\n\n"
+		s += m.progressFormatter.RenderProgressTable(m.downloadQueue.assets, m.downloadQueue.progress)
 		return s
 	}
 

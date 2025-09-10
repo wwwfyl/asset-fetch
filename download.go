@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -100,7 +102,40 @@ func downloadAsset(asset AssetInfo) tea.Cmd {
 			return downloadErrorMsg(fmt.Sprintf("Error writing file: %v", err))
 		}
 
-		return downloadCompleteMsg(asset.Name)
+		// Verify checksum if digest is provided
+		if err := verifyChecksum(asset.Name, asset.Digest); err != nil {
+			// Clean up file with incorrect checksum
+			if removeErr := os.Remove(asset.Name); removeErr != nil {
+				// Log the error but don't return it as we already have a checksum error
+			}
+			return downloadErrorMsg(fmt.Sprintf("Checksum verification failed for %s: %v", asset.Name, err))
+		}
+
+		return checksumVerifiedMsg{
+			filename: asset.Name,
+			success:  true,
+			err:      "",
+		}
+	}
+}
+
+// verifyAssetChecksum verifies the checksum of a downloaded asset
+func verifyAssetChecksum(asset AssetInfo) tea.Cmd {
+	return func() tea.Msg {
+		// Verify checksum if digest is provided
+		if err := verifyChecksum(asset.Name, asset.Digest); err != nil {
+			return checksumVerifiedMsg{
+				filename: asset.Name,
+				success:  false,
+				err:      err.Error(),
+			}
+		}
+
+		return checksumVerifiedMsg{
+			filename: asset.Name,
+			success:  true,
+			err:      "",
+		}
 	}
 }
 
@@ -216,4 +251,49 @@ func formatSize(size int64) string {
 	default:
 		return fmt.Sprintf("%dB", size)
 	}
+}
+
+// calculateSHA256 calculates the SHA256 hash of a file
+func calculateSHA256(filename string) (string, error) {
+	file, err := os.Open(filename)
+	if err != nil {
+		return "", err
+	}
+	defer file.Close()
+
+	hash := sha256.New()
+	if _, err := io.Copy(hash, file); err != nil {
+		return "", err
+	}
+
+	return hex.EncodeToString(hash.Sum(nil)), nil
+}
+
+// verifyChecksum verifies the SHA256 checksum of a downloaded file
+func verifyChecksum(filename string, expectedDigest string) error {
+	// If no digest is provided, skip verification
+	if expectedDigest == "" {
+		return nil
+	}
+
+	// Extract the actual digest from the expectedDigest string
+	// GitHub API returns digest in format "sha256:abcdef..."
+	parts := strings.Split(expectedDigest, ":")
+	if len(parts) != 2 || parts[0] != "sha256" {
+		return fmt.Errorf("invalid digest format: %s", expectedDigest)
+	}
+	expectedSHA256 := parts[1]
+
+	// Calculate actual SHA256 of the file
+	actualSHA256, err := calculateSHA256(filename)
+	if err != nil {
+		return fmt.Errorf("error calculating checksum: %v", err)
+	}
+
+	// Compare checksums
+	if actualSHA256 != expectedSHA256 {
+		return fmt.Errorf("checksum verification failed: expected %s, got %s", expectedSHA256, actualSHA256)
+	}
+
+	return nil
 }

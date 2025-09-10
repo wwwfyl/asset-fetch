@@ -234,6 +234,7 @@ func (af AssetFormatter) FormatAssetInfo(asset Asset, release Release) AssetInfo
 		DownloadURL:   asset.BrowserDownloadURL,
 		Size:          asset.Size,
 		CreatedAt:     asset.CreatedAt,
+		Digest:        asset.Digest,
 		ReleaseTag:    release.TagName,
 		ReleaseName:   release.Name,
 		FormattedDate: formattedDate,

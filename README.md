@@ -12,9 +12,9 @@ It uses the [bubbletea](https://github.com/charmbracelet/bubbletea) library to c
 - Multi-release support with release selection
 - Multi-asset selection and batch downloading
 - Keyboard navigation support
-- Confirmation before download
 - Displaying download progress with tabular view
 - Smart asset filtering with configurable masks
+- Downloads with progress tracking
 
 ## Installation
 
@@ -53,6 +53,10 @@ go build -o afetch
 
 ### During Download
 - q or Ctrl+C - cancel current download
+
+### Download Results
+- Application automatically exits after all downloads complete
+- Shows success/failure status for each downloaded file
 
 ## Configuration
 

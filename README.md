@@ -82,7 +82,34 @@ ASSET_MASK="*.tag.gz"
 
 The configuration file is searched in the following locations:
 1. In the same directory as the executable file
-2. In `~/.config/afetch.conf`
+2. In `~/.config/afetch.conf` (Linux/macOS)
+3. In `%LOCALAPPDATA%\afetch\afetch.conf` (Windows)
+
+### Setting up Configuration
+
+#### Linux/macOS
+```bash
+# Create config directory if it doesn't exist
+mkdir -p ~/.config
+
+# Copy example configuration
+cp afetch.conf.unix.example ~/.config/afetch.conf
+
+# Edit the configuration file
+nano ~/.config/afetch.conf
+```
+
+#### Windows
+```cmd
+# Create config directory if it doesn't exist
+mkdir "%LOCALAPPDATA%\afetch"
+
+# Copy example configuration
+copy afetch.conf.windows.example "%LOCALAPPDATA%\afetch\afetch.conf"
+
+# Edit the configuration file with notepad
+notepad "%LOCALAPPDATA%\afetch\afetch.conf"
+```
 
 ## Examples
 

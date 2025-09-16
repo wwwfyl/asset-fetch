@@ -36,12 +36,12 @@ func main() {
 			os.Exit(0)
 		}
 
-		pathParts := strings.Split(strings.Trim(parsedURL.Path, "/"), "/")
-		if len(pathParts) >= 2 {
-
-			if strings.HasPrefix(arg, "http://") || strings.HasPrefix(arg, "https://") {
-				parsedURL, err := url.Parse(arg)
-				if err == nil && (parsedURL.Host == "github.com" || parsedURL.Host == "www.github.com") {
+		if strings.HasPrefix(arg, "http://") || strings.HasPrefix(arg, "https://") {
+			parsedURL, err := url.Parse(arg)
+			if err == nil && (parsedURL.Host == "github.com" || parsedURL.Host == "www.github.com") {
+				pathParts := strings.Split(strings.Trim(parsedURL.Path, "/"), "/")
+				if len(pathParts) >= 2 {
+					repoOwner = pathParts[0]
 					repoName = pathParts[1]
 					if len(pathParts) > 3 && pathParts[2] == "releases" && pathParts[3] == "tag" {
 						tag = pathParts[4]

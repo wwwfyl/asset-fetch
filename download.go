@@ -119,26 +119,6 @@ func downloadAsset(asset AssetInfo) tea.Cmd {
 	}
 }
 
-// verifyAssetChecksum verifies the checksum of a downloaded asset
-func verifyAssetChecksum(asset AssetInfo) tea.Cmd {
-	return func() tea.Msg {
-		// Verify checksum if digest is provided
-		if err := verifyChecksum(asset.Name, asset.Digest); err != nil {
-			return checksumVerifiedMsg{
-				filename: asset.Name,
-				success:  false,
-				err:      err.Error(),
-			}
-		}
-
-		return checksumVerifiedMsg{
-			filename: asset.Name,
-			success:  true,
-			err:      "",
-		}
-	}
-}
-
 // fetchReleases get list of releases with ASSET_MASK filtering
 func fetchReleases(m model) tea.Cmd {
 	return func() tea.Msg {

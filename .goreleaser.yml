@@ -18,7 +18,7 @@ builds:
       - amd64
       - arm64
     binary: afetch
-    main: ./main.go
+    main: ./
     ldflags:
       - -s -w -X main.version={{.Version}} -X main.commit={{.Commit}} -X main.date={{.Date}} -X main.buildSource=binaryRelease
 

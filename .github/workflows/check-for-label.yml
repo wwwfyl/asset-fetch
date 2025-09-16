@@ -12,4 +12,4 @@ jobs:
         with:
           mode: exactly
           count: 1
-          labels: "ignore-for-release, feature, enhancement, bug, maintenance, docs, i18n, performance, documentation, fix"
+          labels: "ignore-for-release, feature, enhancement, bug, maintenance, docs, i18n, performance, documentation, fix, ci"

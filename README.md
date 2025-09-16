@@ -34,6 +34,14 @@ go build -o afetch
 6. Press Enter to confirm selection
 7. Confirm download by pressing 'y' or cancel by pressing 'n'
 
+### Command-line URL Handling
+
+You can also pass a GitHub releases URL directly as a command-line argument.
+
+- If you provide a URL to the main releases page (e.g., `https://github.com/owner/repo/releases` or `https://github.com/owner/repo/`), the application will show a list of tags for you to choose from (same as when `ASSET_MASK` is not set).
+- If you provide a URL to a specific release (e.g., `https://github.com/owner/repo/releases/tag/v1.0.0`), the application will display the assets for that specific release.
+
+
 ## Controls
 
 ### Release Selection Mode (when ASSET_MASK is empty)

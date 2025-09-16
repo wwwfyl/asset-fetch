@@ -1,151 +1,154 @@
-# asset-fetch (Go version)
+# asset-fetch
 
-Interactive CLI tool for downloading GitHub release assets from public and private repositories with fuzzy search. No GitHub CLI required - direct API integration. Features bubbletea TUI, smart formatting, and token-based authentication.
-
-It uses the [bubbletea](https://github.com/charmbracelet/bubbletea) library to create a terminal interface.
+Interactive CLI tool for downloading GitHub release assets from public and private repositories with fuzzy search. No GitHub CLI required - direct API integration. Features a `bubbletea` TUI, smart filtering, and token-based authentication.
 
 ## Features
 
-- Reading configuration from `afetch.conf`
-- Getting release list from GitHub API
-- Displaying artifacts in a convenient TUI with bubbletea
-- Multi-release support with release selection
-- Multi-asset selection and batch downloading
-- Keyboard navigation support
-- Displaying download progress with tabular view
-- Smart asset filtering with configurable masks
-- Downloads with progress tracking
+-   **Interactive TUI:** Navigate releases and assets with a clean, keyboard-driven interface.
+-   **Fuzzy Search:** Quickly find the release you're looking for.
+-   **Multi-Asset Downloads:** Select and download multiple assets in a single batch operation.
+-   **Smart Filtering:** Use glob patterns (`*.zip`, `app-*-amd64`, etc.) to filter assets directly.
+-   **URL-Based Fetching:** Pass a GitHub releases URL directly to fetch assets from a specific repository or release.
+-   **Configuration File:** Set your GitHub token, default repository, and asset masks in `afetch.conf`.
+-   **Progress Tracking:** Monitor download progress with a clean, tabular view.
+-   **No Dependencies:** Single, self-contained binary. No need for the GitHub CLI.
 
 ## Installation
 
-To build from source, you will need Go 1.21+:
+You can download a pre-compiled binary from the [releases page](https://github.com/wwwfyl/asset-fetch/releases) or build from source.
+
+### Build from Source
+
+You will need Go 1.21+ to build from source.
 
 ```bash
 go build -o afetch
 ```
 
+## Quick Start
+
+1.  **Run with a URL:** The fastest way to use `asset-fetch` is by passing a GitHub releases URL.
+
+    ```bash
+    # Fetch from the latest release of a repository
+    ./afetch https://github.com/charmbracelet/bubbletea/releases
+
+    # Fetch from a specific release tag
+    ./afetch https://github.com/charmbracelet/bubbletea/releases/tag/v0.25.0
+    ```
+
+2.  **Use the Configuration File:** For repositories you access frequently, create an `afetch.conf` file.
+
+    ```bash
+    # Create a config file (see Configuration section for paths)
+    cat > ~/.config/afetch/afetch.conf <<EOL
+    GITHUB_TOKEN="your_github_token"
+    REPO_OWNER="owner"
+    REPO_NAME="repo"
+    ASSET_MASK="*.zip"
+    EOL
+
+    # Run the tool
+    ./afetch
+    ```
+
 ## Usage
 
-1. Configure the `afetch.conf` file with your GitHub token and repository information
-2. Run the application: `./afetch`
-3. If no `ASSET_MASK` is configured, select a release from the list
-4. Select the desired artifact(s) from the list using arrow keys
-5. Use space to select/deselect multiple assets (in multi-select mode)
-6. Press Enter to confirm selection
-7. Confirm download by pressing 'y' or cancel by pressing 'n'
+The tool operates in two main modes: release selection and asset selection.
 
-### Command-line URL Handling
- 
-You can also pass a GitHub releases URL directly as a command-line argument.
+### 1. Release Selection
 
-- If you provide a URL to the main releases page (e.g., `https://github.com/owner/repo/releases` or `https://github.com/owner/repo/`), the application will show a list of tags for you to choose from (same as when `ASSET_MASK` is not set).
+If you run `afetch` with a repository URL or without a specific `ASSET_MASK`, you will be prompted to select a release from a list.
 
-  ```bash
-  ./afetch https://github.com/owner/repo/releases
-  ```
+-   **`Up/Down`** or **`j/k`**: Navigate the list.
+-   **`Enter`**: Select a release and proceed to asset selection.
+-   **`q`** or **`Ctrl+C`**: Exit.
 
-- If you provide a URL to a specific release (e.g., `https://github.com/owner/repo/releases/tag/v1.0.0`), the application will display the assets for that specific release.
+### 2. Asset Selection
 
-  ```bash
-  ./afetch https://github.com/owner/repo/releases/tag/v1.0.0
-  ```
+Once a release is selected, you can choose which assets to download.
 
+-   **`Up/Down`** or **`j/k`**: Navigate the asset list.
+-   **`Space`**: Toggle selection for an asset (for multi-asset downloads).
+-   **`Enter`**: Start the download for the selected asset(s).
+-   **`q`** or **`Ctrl+C`**: Go back or exit.
 
-## Controls
+### 3. Download Confirmation
 
-### Release Selection Mode (when ASSET_MASK is empty)
-- Up/Down arrows or j/k - navigate the release list
-- Enter or Space - select release and show its assets
-- q or Ctrl+C - exit the application
+Before downloading, you'll be asked to confirm.
 
-### Asset Selection Mode
-- Up/Down arrows or j/k - navigate the asset list
-- Space - toggle asset selection (select/deselect)
-- Enter - start downloading selected assets (or current asset if none selected)
-- q or Ctrl+C - exit the application
-
-### Download Confirmation
-- y or Y - confirm download
-- n, N, Esc, q, or Ctrl+C - cancel download
-
-### During Download
-- q or Ctrl+C - cancel current download
-
-### Download Results
-- Application automatically exits after all downloads complete
-- Shows success/failure status for each downloaded file
+-   **`y`**: Confirm and start the download.
+-   **`n`** or **`Esc`**: Cancel.
 
 ## Configuration
 
-The application reads configuration from the `afetch.conf` file, which should contain:
+`asset-fetch` can be configured via an `afetch.conf` file. The file is searched for in these locations:
 
-```bash
-# GitHub API configuration
-GITHUB_TOKEN="your_github_token_here"
-REPO_OWNER="repository_owner"
-REPO_NAME="repository_name"
-ASSET_MASK="*.tag.gz"
-```
+1.  The same directory as the executable.
+2.  `~/.config/afetch/afetch.conf` (Linux/macOS)
+3.  `%LOCALAPPDATA%\afetch\afetch.conf` (Windows)
 
 ### Configuration Options
 
-- `GITHUB_TOKEN` - Your GitHub personal access token (required for private repos, optional for public)
-- `REPO_OWNER` - Repository owner (username or organization name)
-- `REPO_NAME` - Repository name
-- `ASSET_MASK` - Asset filename pattern (optional)
-  - If empty or not specified, the application will show a release selection interface
-  - If specified, only assets matching the pattern will be shown directly
-  - Supports wildcard patterns like `*.zip`, `myapp-*`, etc.
+| Variable       | Description                                                                                                                             |
+| -------------- |-----------------------------------------------------------------------------------------------------------------------------------------|
+| `GITHUB_TOKEN` | Your GitHub Personal Access Token. Required for private repositories and to avoid rate limiting.                                        |
+| `REPO_OWNER`   | The owner of the repository (e.g., `wwwfyl`).                                                                                           |
+| `REPO_NAME`    | The name of the repository (e.g., `asset-fetch`).                                                                                       |
+| `ASSET_MASK`   | An optional glob pattern to filter assets (e.g., `*.zip`). If set, the tool skips release selection and shows matching assets directly. |
 
-The configuration file is searched in the following locations:
-1. In the same directory as the executable file
-2. In `~/.config/afetch.conf` (Linux/macOS)
-3. In `%LOCALAPPDATA%\afetch\afetch.conf` (Windows)
+### Example `afetch.conf`
 
-### Setting up Configuration
+```ini
+# GitHub API configuration
+GITHUB_TOKEN="ghp_xxxxxxxxxxxxxxxxxxxx"
 
-#### Linux/macOS
-```bash
-# Create config directory if it doesn't exist
-mkdir -p ~/.config
+# Default repository
+REPO_OWNER="wwwfyl"
+REPO_NAME="asset-fetch"
 
-# Copy example configuration
-cp afetch.conf.unix.example ~/.config/afetch.conf
+# Optional: Filter for assets matching a pattern.
+# If this is empty or commented out, you will see the release list first.
+ASSET_MASK="*_linux_x86_64.tar.gz"
 
-# Edit the configuration file
-nano ~/.config/afetch.conf
-```
-
-#### Windows
-```cmd
-# Create config directory if it doesn't exist
-mkdir "%LOCALAPPDATA%\afetch"
-
-# Copy example configuration
-copy afetch.conf.windows.example "%LOCALAPPDATA%\afetch\afetch.conf"
-
-# Edit the configuration file with notepad
-notepad "%LOCALAPPDATA%\afetch\afetch.conf"
 ```
 
 ## Examples
 
-### Direct Asset Filtering
+### Download from a URL
+
+The most direct way to use the tool.
+
 ```bash
-# Show only .zip files from all releases
-ASSET_MASK="*.zip"
+# Show releases for afetch
+./afetch https://github.com/wwwfyl/asset-fetch/releases
 
-# Show only files starting with "myapp-"
-ASSET_MASK="myapp-*"
-
-# Show only specific file pattern
-ASSET_MASK="*-linux-x64.tar.gz"
+# Go directly to a specific afetch release
+./afetch https://github.com/wwwfyl/asset-fetch/releases/tag/v0.0.1
 ```
 
-### Release Selection Mode
-```bash
-# Leave ASSET_MASK empty or comment it out to enable release selection
-# ASSET_MASK=""
+### Filter Assets with `ASSET_MASK`
+
+Set `ASSET_MASK` in your `afetch.conf` to skip release selection.
+
+```ini
+# In afetch.conf
+REPO_OWNER="wwwfyl"
+REPO_NAME="asset-fetch"
+ASSET_MASK="*_linux_x86_64.tar.gz"
 ```
 
-This will show a list of all releases, allowing you to select a specific release and then choose from all its assets.
+Running `./afetch` will now immediately show all assets from `wwwfyl/asset-fetch` that match the `*_linux_x86_64.tar.gz` pattern, grouped by release.
+
+### Manual Release Selection
+
+Leave `ASSET_MASK` empty in `afetch.conf` to browse releases interactively.
+
+```ini
+# In afetch.conf
+REPO_OWNER="wwwfyl"
+REPO_NAME="asset-fetch"
+# ASSET_MASK is not set
+```
+
+Running `./afetch` will first show a list of releases for `wwwfyl/asset-fetch`. After you select one, it will show all assets for that release.

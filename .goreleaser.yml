@@ -47,6 +47,7 @@ changelog:
 
 release:
   github:
-    owner: "{{ .Env.GITHUB_REPOSITORY_OWNER }}"
-    name: "{{ .ProjectName }}"
-  name_template: "{{.ProjectName}} {{.Version}}"
+    owner: "wwwfyl"
+    name: "asset-fetch"
+  name_template: "afetch {{.Version}}"
+  

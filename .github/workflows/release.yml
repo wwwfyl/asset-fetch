@@ -51,7 +51,14 @@ jobs:
         uses: mathieudutour/github-tag-action@v6.2
         id: tag_version
         with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
           release_branches: main
+          default_bump: patch
+          default_prerelease_bump: prerelease
+          tag_prefix: v
+          create_annotated_tag: false
+          fetch_all_tags: false
+          dry_run: false
 
       - name: Setup Go
         uses: actions/setup-go@v5

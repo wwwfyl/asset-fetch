@@ -11,6 +11,14 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
+// Build-time variables that will be set by GoReleaser
+var (
+	version     = "dev"
+	commit      = "unknown"
+	date        = "unknown"
+	buildSource = "source"
+)
+
 func main() {
 	// Create context with cancel function
 	downloadContext, downloadCancel = context.WithCancel(context.Background())
@@ -22,6 +30,12 @@ func main() {
 
 	if len(os.Args) > 1 {
 		arg := os.Args[1]
+		// Check for version flag
+		if arg == "--version" || arg == "-v" {
+			fmt.Printf("afetch version %s\n", version)
+			os.Exit(0)
+		}
+
 		if strings.HasPrefix(arg, "http://") || strings.HasPrefix(arg, "https://") {
 			parsedURL, err := url.Parse(arg)
 			if err == nil && (parsedURL.Host == "github.com" || parsedURL.Host == "www.github.com") {

@@ -3,12 +3,6 @@ name: Release
 on:
   # Allow manual triggering of the workflow
   workflow_dispatch:
-    inputs:
-     ignore_blocks:
-        description: 'Ignore blocking PRs/issues'
-        type: boolean
-        required: true
-        default: false
 
 defaults:
   run:
@@ -24,40 +18,23 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Check for changes since last release
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const tags = await github.rest.repos.listTags({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-            });
-            if (tags.data.length === 0) {
-              core.info('No tags found, skipping check for changes.');
-              return;
-            }
-            const latestTag = tags.data[0].name;
-            const commits = await github.rest.repos.compareCommits({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              base: latestTag,
-              head: 'HEAD',
-            });
-            if (commits.data.files.length === 0) {
-              core.setFailed('No changes detected since last release.');
-            }
-
-      - name: Check for Blocking Issues/PRs
-        if: ${{ !inputs.ignore_blocks }}
-        uses: stefan-haller/check-release-blockers@v1
-        with:
-          blocking_label: 'blocks-release'
-
       - name: Bump version and push tag
         uses: mathieudutour/github-tag-action@v6.2
         id: tag_version
         with:
+          github_token: ${{ secrets.AFETCH_RELEASE_PAT }}
           release_branches: main
+          default_bump: patch
+          default_prerelease_bump: prerelease
+          tag_prefix: v
+          create_annotated_tag: false
+          fetch_all_tags: false
+          dry_run: false
+
+      - name: Fetch tags after creation
+        run: |
+          git fetch --tags
+          git tag --list
 
       - name: Setup Go
         uses: actions/setup-go@v5

@@ -73,11 +73,14 @@ Once a release is selected, you can choose which assets to download. Use the spa
 
 ## Configuration
 
-`asset-fetch` can be configured via an `afetch.conf` file. The file is searched for in these locations:
+`asset-fetch` can be configured via an `afetch.conf` file. The file is searched for in the following locations, in order of priority:
 
-1.  The same directory as the executable.
-2.  `~/.config/afetch/afetch.conf` (Linux/macOS)
-3.  `%LOCALAPPDATA%\afetch\afetch.conf` (Windows)
+1.  **Current Directory:** In the same directory as the `afetch` executable. This allows for project-specific configurations.
+2.  **User Configuration Directory:**
+    -   **Linux/macOS:** `~/.config/afetch/afetch.conf`
+    -   **Windows:** `%LOCALAPPDATA%\afetch\afetch.conf`
+
+The first file found will be used. This means a local `afetch.conf` will always take precedence over the global one.
 
 ### Configuration Options
 

@@ -56,29 +56,20 @@ go build -o afetch
 
 The tool operates in two main modes: release selection and asset selection.
 
+### Navigation
+
+-   **`Up/Down`** or **`j/k`**: Navigate lists.
+-   **`Enter`**: Confirm selection (release or asset).
+-   **`Space`**: Toggle an asset for download.
+-   **`q`** or **`Ctrl+C`**: Go back or exit the program.
+
 ### 1. Release Selection
 
-If you run `afetch` with a repository URL or without a specific `ASSET_MASK`, you will be prompted to select a release from a list.
-
--   **`Up/Down`** or **`j/k`**: Navigate the list.
--   **`Enter`**: Select a release and proceed to asset selection.
--   **`q`** or **`Ctrl+C`**: Exit.
+If you run `afetch` with a repository URL or without a specific `ASSET_MASK`, you will be prompted to select a release. Select one to proceed to the asset list.
 
 ### 2. Asset Selection
 
-Once a release is selected, you can choose which assets to download.
-
--   **`Up/Down`** or **`j/k`**: Navigate the asset list.
--   **`Space`**: Toggle selection for an asset (for multi-asset downloads).
--   **`Enter`**: Start the download for the selected asset(s).
--   **`q`** or **`Ctrl+C`**: Go back or exit.
-
-### 3. Download Confirmation
-
-Before downloading, you'll be asked to confirm.
-
--   **`y`**: Confirm and start the download.
--   **`n`** or **`Esc`**: Cancel.
+Once a release is selected, you can choose which assets to download. Use the spacebar to select one or more assets, then press enter to begin downloading.
 
 ## Configuration
 

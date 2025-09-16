@@ -91,7 +91,7 @@ Before downloading, you'll be asked to confirm.
 ### Configuration Options
 
 | Variable       | Description                                                                                                                             |
-| -------------- |-----------------------------------------------------------------------------------------------------------------------------------------|
+|----------------|-----------------------------------------------------------------------------------------------------------------------------------------|
 | `GITHUB_TOKEN` | Your GitHub Personal Access Token. Required for private repositories and to avoid rate limiting.                                        |
 | `REPO_OWNER`   | The owner of the repository (e.g., `wwwfyl`).                                                                                           |
 | `REPO_NAME`    | The name of the repository (e.g., `asset-fetch`).                                                                                       |

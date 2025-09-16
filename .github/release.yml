@@ -1,0 +1,21 @@
+changelog:
+  exclude:
+    labels:
+      - ignore-for-release
+  categories:
+    - title: Features ✨
+      labels:
+        - feature
+    - title: Fixes 🔧
+      labels:
+        - bug
+    - title: Maintenance ⚙️
+      labels:
+        - maintenance
+    - title: Other Changes
+      labels:
+        - enhancement
+        - performance
+        - docs
+        - i18n
+        - "*"

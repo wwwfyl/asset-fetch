@@ -3,12 +3,6 @@ name: Release
 on:
   # Allow manual triggering of the workflow
   workflow_dispatch:
-    inputs:
-     ignore_blocks:
-        description: 'Ignore blocking PRs/issues'
-        type: boolean
-        required: true
-        default: false
 
 defaults:
   run:

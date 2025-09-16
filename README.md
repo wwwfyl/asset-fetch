@@ -1,4 +1,6 @@
-# asset-fetch
+# asset-fetch (afetch)
+
+[![Release](https://img.shields.io/github/v/release/wwwfyl/asset-fetch?style=flat-square)](https://github.com/wwwfyl/asset-fetch/releases)
 
 Interactive CLI tool for downloading GitHub release assets from public and private repositories with fuzzy search. No GitHub CLI required - direct API integration. Features a `bubbletea` TUI, smart filtering, and token-based authentication.
 

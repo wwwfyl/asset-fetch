@@ -50,4 +50,4 @@ release:
     owner: "wwwfyl"
     name: "asset-fetch"
   name_template: "afetch {{.Version}}"
-
+  

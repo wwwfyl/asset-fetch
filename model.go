@@ -75,6 +75,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case StateDownloading, StateFinished:
 			// No input handling during download states
 			return m, nil
+		case StateChecksumVerification:
 		}
 
 	case releasesMsg:

@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
+	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -14,10 +16,41 @@ func main() {
 	downloadContext, downloadCancel = context.WithCancel(context.Background())
 	defer downloadCancel()
 
+	var repoOwner, repoName, tag string
+	var assetMask *string
+	var startWithReleases bool
+
+	if len(os.Args) > 1 {
+		arg := os.Args[1]
+		if strings.HasPrefix(arg, "http://") || strings.HasPrefix(arg, "https://") {
+			parsedURL, err := url.Parse(arg)
+			if err == nil && (parsedURL.Host == "github.com" || parsedURL.Host == "www.github.com") {
+				pathParts := strings.Split(strings.Trim(parsedURL.Path, "/"), "/")
+				if len(pathParts) >= 2 {
+					repoOwner = pathParts[0]
+					repoName = pathParts[1]
+					if len(pathParts) > 3 && pathParts[2] == "releases" && pathParts[3] == "tag" {
+						tag = pathParts[4]
+						emptyString := ""
+						assetMask = &emptyString
+						startWithReleases = false
+					} else {
+						startWithReleases = true
+					}
+				}
+			}
+		}
+	}
+
 	// Initialize unified model
 	m := model{
-		loading: true,
-		state:   StateReleases,
+		loading:           true,
+		state:             StateReleases,
+		repoOwner:         repoOwner,
+		repoName:          repoName,
+		tag:               tag,
+		assetMask:         assetMask,
+		startWithReleases: startWithReleases,
 	}
 
 	// Run bubbletea

@@ -172,7 +172,6 @@ type releasesData struct {
 }
 
 type releasesMsg releasesData
-type downloadCompleteMsg string
 type downloadErrorMsg string
 type cancelDownloadMsg struct{}
 

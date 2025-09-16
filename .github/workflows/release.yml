@@ -60,6 +60,11 @@ jobs:
           fetch_all_tags: false
           dry_run: false
 
+      - name: Fetch tags after creation
+        run: |
+          git fetch --tags
+          git tag --list
+
       - name: Setup Go
         uses: actions/setup-go@v5
         with:

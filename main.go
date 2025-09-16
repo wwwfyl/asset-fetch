@@ -11,6 +11,14 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
+// Build-time variables that will be set by GoReleaser
+var (
+	version     = "dev"
+	commit      = "unknown"
+	date        = "unknown"
+	buildSource = "source"
+)
+
 func main() {
 	// Create context with cancel function
 	downloadContext, downloadCancel = context.WithCancel(context.Background())
@@ -22,12 +30,18 @@ func main() {
 
 	if len(os.Args) > 1 {
 		arg := os.Args[1]
-		if strings.HasPrefix(arg, "http://") || strings.HasPrefix(arg, "https://") {
-			parsedURL, err := url.Parse(arg)
-			if err == nil && (parsedURL.Host == "github.com" || parsedURL.Host == "www.github.com") {
-				pathParts := strings.Split(strings.Trim(parsedURL.Path, "/"), "/")
-				if len(pathParts) >= 2 {
-					repoOwner = pathParts[0]
+		// Check for version flag
+		if arg == "--version" || arg == "-v" {
+			fmt.Printf("afetch version %s\n", version)
+			os.Exit(0)
+		}
+
+		pathParts := strings.Split(strings.Trim(parsedURL.Path, "/"), "/")
+		if len(pathParts) >= 2 {
+
+			if strings.HasPrefix(arg, "http://") || strings.HasPrefix(arg, "https://") {
+				parsedURL, err := url.Parse(arg)
+				if err == nil && (parsedURL.Host == "github.com" || parsedURL.Host == "www.github.com") {
 					repoName = pathParts[1]
 					if len(pathParts) > 3 && pathParts[2] == "releases" && pathParts[3] == "tag" {
 						tag = pathParts[4]

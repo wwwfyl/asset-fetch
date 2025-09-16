@@ -32,11 +32,18 @@ type model struct {
 
 	// Legacy fields for compatibility during transition
 	releases []Release
+
+	// URL-based execution
+	repoOwner         string
+	repoName          string
+	tag               string
+	assetMask         *string
+	startWithReleases bool
 }
 
 // Init bubbletea initialization
 func (m model) Init() tea.Cmd {
-	return fetchReleases
+	return fetchReleases(m)
 }
 
 // Update bubbletea message processing - unified version
@@ -71,9 +78,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 	case releasesMsg:
-		// Check if we have filtered assets (ASSET_MASK was used)
-		if len(msg.assets) > 0 {
-			// Show filtered assets directly
+		// If a specific tag was requested, go directly to assets
+		if m.tag != "" {
+			m.listView.SetAssets(msg.assets)
+			m.state = StateAssets
+			m.loading = false
+		} else if len(msg.assets) > 0 && !m.startWithReleases {
+			// Show filtered assets directly if ASSET_MASK was used and not overridden by URL
 			m.listView.SetAssets(msg.assets)
 			m.state = StateAssets
 			m.loading = false

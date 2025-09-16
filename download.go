@@ -140,90 +140,139 @@ func verifyAssetChecksum(asset AssetInfo) tea.Cmd {
 }
 
 // fetchReleases get list of releases with ASSET_MASK filtering
-func fetchReleases() tea.Msg {
-	config, err := loadConfig()
-	if err != nil {
-		return errorMsg(err.Error())
-	}
-
-	apiURL := fmt.Sprintf("https://api.github.com/repos/%s/%s/releases", config.RepoOwner, config.RepoName)
-
-	client := &http.Client{}
-	req, err := http.NewRequest("GET", apiURL, nil)
-	if err != nil {
-		return errorMsg(err.Error())
-	}
-
-	req.Header.Set("Accept", "application/vnd.github+json")
-	// Only add authorization header if token is provided
-	if config.GitHubToken != "" {
-		req.Header.Set("Authorization", "Bearer "+config.GitHubToken)
-	}
-	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
-
-	resp, err := client.Do(req)
-	if err != nil {
-		return errorMsg(err.Error())
-	}
-	defer func() {
-		if closeErr := resp.Body.Close(); closeErr != nil {
-			// Log the error but don't return it as it's in defer
-		}
-	}()
-
-	if resp.StatusCode != http.StatusOK {
-		return errorMsg(fmt.Sprintf("GitHub API error: %d", resp.StatusCode))
-	}
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return errorMsg(err.Error())
-	}
-
-	var releases []Release
-	err = json.Unmarshal(body, &releases)
-	if err != nil {
-		return errorMsg(err.Error())
-	}
-
-	// If AssetMask is empty, return releases list
-	if config.AssetMask == "" {
-		return releasesMsg{releases: releases}
-	}
-
-	// Filter assets by ASSET_MASK
-	var assets []AssetInfo
-	formatter := AssetFormatter{}
-
-	for _, release := range releases {
-		for _, asset := range release.Assets {
-			// Use asset mask from config
-			assetMask := config.AssetMask
-
-			// Parse the mask into prefix and suffix
-			parts := strings.Split(assetMask, "*")
-			var prefix, suffix string
-			if len(parts) == 2 {
-				prefix = parts[0]
-				suffix = parts[1]
-			} else {
-				// If no asterisk or multiple asterisks, use the whole mask as prefix
-				prefix = assetMask
+func fetchReleases(m model) tea.Cmd {
+	return func() tea.Msg {
+		config, err := loadConfig()
+		if err != nil {
+			// If URL is provided, we might not need a config file
+			if m.repoOwner == "" || m.repoName == "" {
+				return errorMsg(err.Error())
 			}
+		}
 
-			// Check if asset name matches the mask
-			if strings.HasPrefix(asset.Name, prefix) && strings.HasSuffix(asset.Name, suffix) {
+		repoOwner := m.repoOwner
+		repoName := m.repoName
+		if repoOwner == "" || repoName == "" {
+			repoOwner = config.RepoOwner
+			repoName = config.RepoName
+		}
+
+		var apiURL string
+		if m.tag != "" {
+			apiURL = fmt.Sprintf("https://api.github.com/repos/%s/%s/releases/tags/%s", repoOwner, repoName, m.tag)
+		} else {
+			apiURL = fmt.Sprintf("https://api.github.com/repos/%s/%s/releases", repoOwner, repoName)
+		}
+
+		client := &http.Client{}
+		req, err := http.NewRequest("GET", apiURL, nil)
+		if err != nil {
+			return errorMsg(err.Error())
+		}
+
+		req.Header.Set("Accept", "application/vnd.github+json")
+
+		// Use token from config if available
+		var token string
+		if config != nil {
+			token = config.GitHubToken
+		}
+
+		// Only add authorization header if token is provided
+		if token != "" {
+			req.Header.Set("Authorization", "Bearer "+token)
+		}
+		req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
+
+		resp, err := client.Do(req)
+		if err != nil {
+			return errorMsg(err.Error())
+		}
+		defer func() {
+			if closeErr := resp.Body.Close(); closeErr != nil {
+				// Log the error but don't return it as it's in defer
+			}
+		}()
+
+		if resp.StatusCode != http.StatusOK {
+			return errorMsg(fmt.Sprintf("GitHub API error: %d", resp.StatusCode))
+		}
+
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return errorMsg(err.Error())
+		}
+
+		// If a specific tag is requested, the API returns a single release object
+		if m.tag != "" {
+			var release Release
+			err = json.Unmarshal(body, &release)
+			if err != nil {
+				return errorMsg(err.Error())
+			}
+			releases := []Release{release}
+			var assets []AssetInfo
+			formatter := AssetFormatter{}
+			for _, asset := range release.Assets {
 				assetInfo := formatter.FormatAssetInfo(asset, release)
+				assetInfo.DisplayLine = formatter.createDisplayLineWithoutTag(asset.Name, assetInfo.SizeStr, assetInfo.FormattedDate)
 				assets = append(assets, assetInfo)
 			}
+			return releasesMsg{assets: assets, releases: releases}
 		}
-	}
 
-	if len(assets) == 0 {
-		return errorMsg("artifacts not found")
-	}
+		var releases []Release
+		err = json.Unmarshal(body, &releases)
+		if err != nil {
+			return errorMsg(err.Error())
+		}
 
-	return releasesMsg{assets: assets, releases: releases}
+		assetMaskValue := ""
+		if m.assetMask != nil {
+			assetMaskValue = *m.assetMask
+		} else if config != nil {
+			assetMaskValue = config.AssetMask
+		}
+
+		// If AssetMask is empty OR if we are starting with releases view from URL
+		if assetMaskValue == "" || m.startWithReleases {
+			return releasesMsg{releases: releases}
+		}
+
+		// Filter assets by ASSET_MASK
+		var assets []AssetInfo
+		formatter := AssetFormatter{}
+
+		for _, release := range releases {
+			for _, asset := range release.Assets {
+				// Use asset mask from config
+				assetMask := assetMaskValue
+
+				// Parse the mask into prefix and suffix
+				parts := strings.Split(assetMask, "*")
+				var prefix, suffix string
+				if len(parts) == 2 {
+					prefix = parts[0]
+					suffix = parts[1]
+				} else {
+					// If no asterisk or multiple asterisks, use the whole mask as prefix
+					prefix = assetMask
+				}
+
+				// Check if asset name matches the mask
+				if strings.HasPrefix(asset.Name, prefix) && strings.HasSuffix(asset.Name, suffix) {
+					assetInfo := formatter.FormatAssetInfo(asset, release)
+					assets = append(assets, assetInfo)
+				}
+			}
+		}
+
+		if len(assets) == 0 {
+			return errorMsg("artifacts not found")
+		}
+
+		return releasesMsg{assets: assets, releases: releases}
+	}
 }
 
 // formatCreatedAt format creation date

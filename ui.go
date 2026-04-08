@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/charmbracelet/lipgloss"
 )
@@ -30,12 +31,15 @@ func (nh NavigationHandler) HandleKey(key string) bool {
 
 // UnifiedListView handles both releases and assets display
 type UnifiedListView struct {
-	items        []interface{}
-	cursor       int
-	selected     []bool
-	multiSelect  bool
-	title        string
-	instructions string
+	items         []interface{}
+	cursor        int
+	selected      []bool
+	multiSelect   bool
+	title         string
+	instructions  string
+	filter        string
+	filteredItems []interface{}
+	searchEnabled bool
 }
 
 func (ulv *UnifiedListView) SetReleases(releases []Release) {
@@ -46,8 +50,11 @@ func (ulv *UnifiedListView) SetReleases(releases []Release) {
 	ulv.cursor = 0
 	ulv.selected = nil
 	ulv.multiSelect = false
+	ulv.searchEnabled = true
+	ulv.filter = ""
+	ulv.filteredItems = ulv.items
 	ulv.title = "Select release:"
-	ulv.instructions = "Press '↑/↓' or 'j/k' to navigate, 'enter' to select, 'q' or 'ctrl+c' to quit"
+	ulv.instructions = "Type to search, '↑/↓' navigate, 'enter' to select, 'esc' to clear, 'q' to quit"
 }
 
 func (ulv *UnifiedListView) SetAssets(assets []AssetInfo) {
@@ -58,8 +65,49 @@ func (ulv *UnifiedListView) SetAssets(assets []AssetInfo) {
 	ulv.cursor = 0
 	ulv.selected = make([]bool, len(assets))
 	ulv.multiSelect = true
+	ulv.searchEnabled = false
+	ulv.filter = ""
+	ulv.filteredItems = ulv.items
 	ulv.title = "Select assets to download (press space to select, enter to download):"
 	ulv.instructions = "Press '↑/↓' or 'j/k' to navigate, 'space' to select/deselect, 'enter' to download, 'q' or 'ctrl+c' to quit"
+}
+
+func (ulv *UnifiedListView) SetFilter(f string) {
+	ulv.filter = f
+	ulv.cursor = 0
+	if f == "" || !ulv.searchEnabled {
+		ulv.filteredItems = ulv.items
+		return
+	}
+	ulv.filteredItems = []interface{}{}
+	for _, item := range ulv.items {
+		if r, ok := item.(Release); ok {
+			if fuzzyMatch(f, r.TagName+" "+r.Name) {
+				ulv.filteredItems = append(ulv.filteredItems, item)
+			}
+		}
+	}
+}
+
+func (ulv *UnifiedListView) AddToFilter(ch string) { ulv.SetFilter(ulv.filter + ch) }
+
+func (ulv *UnifiedListView) BackspaceFilter() {
+	if len(ulv.filter) > 0 {
+		runes := []rune(ulv.filter)
+		ulv.SetFilter(string(runes[:len(runes)-1]))
+	}
+}
+
+func fuzzyMatch(pattern, text string) bool {
+	pattern = strings.ToLower(pattern)
+	text = strings.ToLower(text)
+	pi := 0
+	for _, c := range text {
+		if pi < len(pattern) && rune(pattern[pi]) == c {
+			pi++
+		}
+	}
+	return pi == len(pattern)
 }
 
 func (ulv *UnifiedListView) GetSelectedCount() int {
@@ -107,8 +155,8 @@ func (ulv *UnifiedListView) GetCurrentAsset() *AssetInfo {
 }
 
 func (ulv *UnifiedListView) GetCurrentRelease() *Release {
-	if ulv.cursor < len(ulv.items) {
-		if release, ok := ulv.items[ulv.cursor].(Release); ok {
+	if ulv.cursor < len(ulv.filteredItems) {
+		if release, ok := ulv.filteredItems[ulv.cursor].(Release); ok {
 			return &release
 		}
 	}
@@ -123,9 +171,19 @@ func (ulv *UnifiedListView) Render() string {
 	defaultStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("15"))
 	selectedAssetStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("46")) // Green
 	infoStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+	searchStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("214"))
 
-	// Display items
-	for i, item := range ulv.items {
+	// Search prompt
+	if ulv.searchEnabled {
+		s += searchStyle.Render("/ "+ulv.filter+"█") + "\n\n"
+	}
+
+	// Display filtered items
+	items := ulv.filteredItems
+	if len(items) == 0 && ulv.filter != "" {
+		s += infoStyle.Render("  no releases found") + "\n"
+	}
+	for i, item := range items {
 		var line string
 		var selectionMarker string
 

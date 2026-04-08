@@ -43,7 +43,7 @@ go build -o afetch
 
     ```bash
     # Create a config file (see Configuration section for paths)
-    cat > ~/.config/afetch/afetch.conf <<EOL
+    cat > ~/.config/afetch.conf <<EOL
     GITHUB_TOKEN="your_github_token"
     REPO_OWNER="owner"
     REPO_NAME="repo"
@@ -61,8 +61,7 @@ The tool operates in two main modes: release selection and asset selection.
 ### Navigation
 
 -   **`Up/Down`** or **`j/k`**: Navigate lists.
--   **`Enter`**: Confirm selection (release or asset).
--   **`Space`**: Toggle an asset for download.
+-   **`Enter`** or **`Space`**: Confirm release selection; toggle an asset for download in asset view.
 -   **`q`** or **`Ctrl+C`**: Go back or exit the program.
 
 ### 1. Release Selection
@@ -79,7 +78,7 @@ Once a release is selected, you can choose which assets to download. Use the spa
 
 1.  **Current Directory:** In the same directory as the `afetch` executable. This allows for project-specific configurations.
 2.  **User Configuration Directory:**
-    -   **Linux/macOS:** `~/.config/afetch/afetch.conf`
+    -   **Linux/macOS:** `~/.config/afetch.conf`
     -   **Windows:** `%LOCALAPPDATA%\afetch\afetch.conf`
 
 The first file found will be used. This means a local `afetch.conf` will always take precedence over the global one.

@@ -213,97 +213,146 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m model) handleReleasesInput(key string) (tea.Model, tea.Cmd) {
 	maxItems := len(m.listView.filteredItems)
 
+	if m.listView.searchActive {
+		switch key {
+		case "esc":
+			m.listView.searchActive = false
+			m.listView.SetFilter("")
+		case "enter":
+			m.listView.searchActive = false
+			if selectedRelease := m.listView.GetCurrentRelease(); selectedRelease != nil {
+				m.selectRelease(selectedRelease)
+			}
+		case "up":
+			if m.listView.cursor > 0 {
+				m.listView.cursor--
+			}
+		case "down":
+			if m.listView.cursor < maxItems-1 {
+				m.listView.cursor++
+			}
+		case "backspace":
+			m.listView.BackspaceFilter()
+		default:
+			if len(key) == 1 {
+				m.listView.AddToFilter(key)
+			}
+		}
+		return m, nil
+	}
+
+	// Nav mode
 	switch key {
-	case "up":
+	case "/":
+		m.listView.ActivateSearch()
+	case "up", "k":
 		if m.listView.cursor > 0 {
 			m.listView.cursor--
 		}
-	case "down":
+	case "down", "j":
 		if m.listView.cursor < maxItems-1 {
 			m.listView.cursor++
 		}
-	case "k":
-		if m.listView.filter != "" {
-			m.listView.AddToFilter("k")
-		} else if m.listView.cursor > 0 {
-			m.listView.cursor--
-		}
-	case "j":
-		if m.listView.filter != "" {
-			m.listView.AddToFilter("j")
-		} else if m.listView.cursor < maxItems-1 {
-			m.listView.cursor++
-		}
-	case "backspace":
-		m.listView.BackspaceFilter()
 	case "esc":
-		m.listView.SetFilter("")
+		if m.listView.filter != "" {
+			m.listView.SetFilter("")
+		}
 	case "enter", " ":
 		if selectedRelease := m.listView.GetCurrentRelease(); selectedRelease != nil {
-			var assets []AssetInfo
-			for _, asset := range selectedRelease.Assets {
-				assetInfo := m.assetFormatter.FormatAssetInfo(asset, *selectedRelease)
-				assetInfo.DisplayLine = m.assetFormatter.createDisplayLineWithoutTag(asset.Name, assetInfo.SizeStr, assetInfo.FormattedDate)
-				assets = append(assets, assetInfo)
-			}
-			m.listView.SetAssets(assets)
-			m.state = StateAssets
-			m.fromReleasesView = true
-		}
-	default:
-		if len(key) == 1 {
-			m.listView.AddToFilter(key)
+			m.selectRelease(selectedRelease)
 		}
 	}
 
 	return m, nil
 }
 
+func (m *model) selectRelease(selectedRelease *Release) {
+	var assets []AssetInfo
+	for _, asset := range selectedRelease.Assets {
+		assetInfo := m.assetFormatter.FormatAssetInfo(asset, *selectedRelease)
+		assetInfo.DisplayLine = m.assetFormatter.createDisplayLineWithoutTag(asset.Name, assetInfo.SizeStr, assetInfo.FormattedDate)
+		assets = append(assets, assetInfo)
+	}
+	m.listView.SetAssets(assets)
+	m.state = StateAssets
+	m.fromReleasesView = true
+}
+
 // Handle input when in assets state
 func (m model) handleAssetsInput(key string) (tea.Model, tea.Cmd) {
-	navHandler := NavigationHandler{
-		cursor:   &m.listView.cursor,
-		maxItems: len(m.listView.items),
-	}
+	maxItems := len(m.listView.filteredItems)
 
-	if navHandler.HandleKey(key) {
+	if m.listView.searchActive {
+		switch key {
+		case "esc":
+			m.listView.searchActive = false
+			m.listView.SetFilter("")
+		case "enter":
+			m.listView.searchActive = false
+			return m.startDownload()
+		case "up":
+			if m.listView.cursor > 0 {
+				m.listView.cursor--
+			}
+		case "down":
+			if m.listView.cursor < maxItems-1 {
+				m.listView.cursor++
+			}
+		case "backspace":
+			m.listView.BackspaceFilter()
+		default:
+			if len(key) == 1 {
+				m.listView.AddToFilter(key)
+			}
+		}
 		return m, nil
 	}
 
+	// Nav mode
 	switch key {
+	case "/":
+		m.listView.ActivateSearch()
+	case "up", "k":
+		if m.listView.cursor > 0 {
+			m.listView.cursor--
+		}
+	case "down", "j":
+		if m.listView.cursor < maxItems-1 {
+			m.listView.cursor++
+		}
+	case "esc":
+		if m.listView.filter != "" {
+			m.listView.SetFilter("")
+		}
 	case " ":
-		// Toggle selection
 		m.listView.ToggleSelection()
-
 	case "enter":
-		// Start downloading selected assets or current asset if none selected
-		selectedAssets := m.listView.GetSelectedAssets()
-
-		// If no assets selected, add current asset to queue
-		if len(selectedAssets) == 0 {
-			if currentAsset := m.listView.GetCurrentAsset(); currentAsset != nil {
-				selectedAssets = []AssetInfo{*currentAsset}
-			}
-		}
-
-		if len(selectedAssets) > 0 {
-			// Initialize download queue with selected assets
-			m.downloadQueue.Reset()
-			m.downloadQueue.AddMultiple(selectedAssets)
-
-			// Start first download
-			if !m.downloadQueue.IsEmpty() {
-				asset := m.downloadQueue.GetCurrent()
-				return m, tea.Batch(
-					func() tea.Msg {
-						return startDownloadProgressMsg{asset: *asset}
-					},
-					downloadAsset(*asset),
-				)
-			}
-		}
+		return m.startDownload()
 	}
 
+	return m, nil
+}
+
+func (m model) startDownload() (tea.Model, tea.Cmd) {
+	selectedAssets := m.listView.GetSelectedAssets()
+	if len(selectedAssets) == 0 {
+		if currentAsset := m.listView.GetCurrentAsset(); currentAsset != nil {
+			selectedAssets = []AssetInfo{*currentAsset}
+		}
+	}
+	if len(selectedAssets) > 0 {
+		m.downloadQueue.Reset()
+		m.downloadQueue.AddMultiple(selectedAssets)
+		if !m.downloadQueue.IsEmpty() {
+			asset := m.downloadQueue.GetCurrent()
+			return m, tea.Batch(
+				func() tea.Msg {
+					return startDownloadProgressMsg{asset: *asset}
+				},
+				downloadAsset(*asset),
+			)
+		}
+	}
 	return m, nil
 }
 

@@ -37,9 +37,11 @@ type UnifiedListView struct {
 	multiSelect   bool
 	title         string
 	instructions  string
-	filter        string
-	filteredItems []interface{}
-	searchEnabled bool
+	filter          string
+	filteredItems   []interface{}
+	filteredIndices []int // original items index for each filteredItems entry; nil = 1:1
+	searchEnabled   bool
+	searchActive    bool
 }
 
 func (ulv *UnifiedListView) SetReleases(releases []Release) {
@@ -51,10 +53,11 @@ func (ulv *UnifiedListView) SetReleases(releases []Release) {
 	ulv.selected = nil
 	ulv.multiSelect = false
 	ulv.searchEnabled = true
+	ulv.searchActive = false
 	ulv.filter = ""
 	ulv.filteredItems = ulv.items
 	ulv.title = "Select release:"
-	ulv.instructions = "Type to search, '↑/↓' navigate, 'enter' to select, 'esc' to clear, 'q' to quit"
+	ulv.instructions = "Press '/' to search, '↑/↓' or 'j/k' to navigate, 'enter' to select, 'q' to quit"
 }
 
 func (ulv *UnifiedListView) SetAssets(assets []AssetInfo) {
@@ -65,11 +68,13 @@ func (ulv *UnifiedListView) SetAssets(assets []AssetInfo) {
 	ulv.cursor = 0
 	ulv.selected = make([]bool, len(assets))
 	ulv.multiSelect = true
-	ulv.searchEnabled = false
+	ulv.searchEnabled = true
+	ulv.searchActive = false
 	ulv.filter = ""
 	ulv.filteredItems = ulv.items
+	ulv.filteredIndices = nil
 	ulv.title = "Select assets to download (press space to select, enter to download):"
-	ulv.instructions = "Press '↑/↓' or 'j/k' to navigate, 'space' to select/deselect, 'enter' to download, 'q' or 'ctrl+c' to quit"
+	ulv.instructions = "Press '/' to search, '↑/↓' or 'j/k' to navigate, 'space' to select, 'enter' to download, 'q' to go back"
 }
 
 func (ulv *UnifiedListView) SetFilter(f string) {
@@ -77,19 +82,28 @@ func (ulv *UnifiedListView) SetFilter(f string) {
 	ulv.cursor = 0
 	if f == "" || !ulv.searchEnabled {
 		ulv.filteredItems = ulv.items
+		ulv.filteredIndices = nil
 		return
 	}
 	ulv.filteredItems = []interface{}{}
-	for _, item := range ulv.items {
+	ulv.filteredIndices = []int{}
+	for i, item := range ulv.items {
+		var matches bool
 		if r, ok := item.(Release); ok {
-			if fuzzyMatch(f, r.TagName) || fuzzyMatch(f, r.Name) {
-				ulv.filteredItems = append(ulv.filteredItems, item)
-			}
+			matches = fuzzyMatch(f, r.TagName) || fuzzyMatch(f, r.Name)
+		} else if a, ok := item.(AssetInfo); ok {
+			matches = fuzzyMatch(f, a.Name) || fuzzyMatch(f, a.ReleaseTag)
+		}
+		if matches {
+			ulv.filteredItems = append(ulv.filteredItems, item)
+			ulv.filteredIndices = append(ulv.filteredIndices, i)
 		}
 	}
 }
 
 func (ulv *UnifiedListView) AddToFilter(ch string) { ulv.SetFilter(ulv.filter + ch) }
+
+func (ulv *UnifiedListView) ActivateSearch() { ulv.searchActive = true }
 
 func (ulv *UnifiedListView) BackspaceFilter() {
 	if len(ulv.filter) > 0 {
@@ -116,8 +130,15 @@ func (ulv *UnifiedListView) GetSelectedCount() int {
 }
 
 func (ulv *UnifiedListView) ToggleSelection() {
-	if ulv.multiSelect && ulv.cursor < len(ulv.selected) {
-		ulv.selected[ulv.cursor] = !ulv.selected[ulv.cursor]
+	if !ulv.multiSelect {
+		return
+	}
+	idx := ulv.cursor
+	if ulv.filteredIndices != nil && ulv.cursor < len(ulv.filteredIndices) {
+		idx = ulv.filteredIndices[ulv.cursor]
+	}
+	if idx < len(ulv.selected) {
+		ulv.selected[idx] = !ulv.selected[idx]
 	}
 }
 
@@ -138,8 +159,8 @@ func (ulv *UnifiedListView) GetSelectedAssets() []AssetInfo {
 }
 
 func (ulv *UnifiedListView) GetCurrentAsset() *AssetInfo {
-	if ulv.cursor < len(ulv.items) {
-		if asset, ok := ulv.items[ulv.cursor].(AssetInfo); ok {
+	if ulv.cursor < len(ulv.filteredItems) {
+		if asset, ok := ulv.filteredItems[ulv.cursor].(AssetInfo); ok {
 			return &asset
 		}
 	}
@@ -167,13 +188,17 @@ func (ulv *UnifiedListView) Render() string {
 
 	// Search prompt
 	if ulv.searchEnabled {
-		s += searchStyle.Render("/ "+ulv.filter+"█") + "\n\n"
+		if ulv.searchActive {
+			s += searchStyle.Render("/ "+ulv.filter+"█") + "\n\n"
+		} else if ulv.filter != "" {
+			s += searchStyle.Render("/ "+ulv.filter) + "\n\n"
+		}
 	}
 
 	// Display filtered items
 	items := ulv.filteredItems
 	if len(items) == 0 && ulv.filter != "" {
-		s += infoStyle.Render("  no releases found") + "\n"
+		s += infoStyle.Render("  no results found") + "\n"
 	}
 	for i, item := range items {
 		var line string
@@ -184,8 +209,12 @@ func (ulv *UnifiedListView) Render() string {
 		} else if asset, ok := item.(AssetInfo); ok {
 			line = asset.DisplayLine
 			if ulv.multiSelect {
+				originalIdx := i
+				if ulv.filteredIndices != nil && i < len(ulv.filteredIndices) {
+					originalIdx = ulv.filteredIndices[i]
+				}
 				selectionMarker = " [ ] "
-				if i < len(ulv.selected) && ulv.selected[i] {
+				if originalIdx < len(ulv.selected) && ulv.selected[originalIdx] {
 					selectionMarker = selectedAssetStyle.Render(" [x] ")
 				}
 			}

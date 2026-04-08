@@ -62,9 +62,9 @@ The tool operates in two main modes: release selection and asset selection.
 
 -   **`Up/Down`**: Navigate lists.
 -   **`j/k`**: Navigate lists (when search is empty in release view).
--   **Any character**: Filter releases by substring search (release view only).
--   **`Backspace`**: Remove last character from search.
--   **`Esc`**: Clear search filter.
+-   **`/`**: Activate search mode (release and asset views).
+-   **`Backspace`**: Remove last character from search (search mode only).
+-   **`Esc`**: Exit search mode and clear filter; clear active filter in nav mode.
 -   **`Enter`** or **`Space`**: Confirm release selection; toggle an asset for download in asset view.
 -   **`q`** or **`Ctrl+C`**: Go back to release list (from asset view), cancel download (while downloading), or exit.
 

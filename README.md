@@ -60,7 +60,11 @@ The tool operates in two main modes: release selection and asset selection.
 
 ### Navigation
 
--   **`Up/Down`** or **`j/k`**: Navigate lists.
+-   **`Up/Down`**: Navigate lists.
+-   **`j/k`**: Navigate lists (when search is empty in release view).
+-   **Any character**: Filter releases by fuzzy search (release view only).
+-   **`Backspace`**: Remove last character from search.
+-   **`Esc`**: Clear search filter.
 -   **`Enter`** or **`Space`**: Confirm release selection; toggle an asset for download in asset view.
 -   **`q`** or **`Ctrl+C`**: Go back to release list (from asset view), cancel download (while downloading), or exit.
 

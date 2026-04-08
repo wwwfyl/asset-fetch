@@ -212,29 +212,48 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 // Handle input when in releases state
 func (m model) handleReleasesInput(key string) (tea.Model, tea.Cmd) {
-	navHandler := NavigationHandler{
-		cursor:   &m.listView.cursor,
-		maxItems: len(m.listView.items),
-	}
-
-	if navHandler.HandleKey(key) {
-		return m, nil
-	}
+	maxItems := len(m.listView.filteredItems)
 
 	switch key {
+	case "up":
+		if m.listView.cursor > 0 {
+			m.listView.cursor--
+		}
+	case "down":
+		if m.listView.cursor < maxItems-1 {
+			m.listView.cursor++
+		}
+	case "k":
+		if m.listView.filter != "" {
+			m.listView.AddToFilter("k")
+		} else if m.listView.cursor > 0 {
+			m.listView.cursor--
+		}
+	case "j":
+		if m.listView.filter != "" {
+			m.listView.AddToFilter("j")
+		} else if m.listView.cursor < maxItems-1 {
+			m.listView.cursor++
+		}
+	case "backspace":
+		m.listView.BackspaceFilter()
+	case "esc":
+		m.listView.SetFilter("")
 	case "enter", " ":
 		if selectedRelease := m.listView.GetCurrentRelease(); selectedRelease != nil {
-			// Convert release assets to AssetInfo and show asset selection
 			var assets []AssetInfo
 			for _, asset := range selectedRelease.Assets {
 				assetInfo := m.assetFormatter.FormatAssetInfo(asset, *selectedRelease)
 				assetInfo.DisplayLine = m.assetFormatter.createDisplayLineWithoutTag(asset.Name, assetInfo.SizeStr, assetInfo.FormattedDate)
 				assets = append(assets, assetInfo)
 			}
-
 			m.listView.SetAssets(assets)
 			m.state = StateAssets
 			m.fromReleasesView = true
+		}
+	default:
+		if len(key) == 1 {
+			m.listView.AddToFilter(key)
 		}
 	}
 

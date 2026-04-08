@@ -2,12 +2,12 @@
 
 [![Release](https://img.shields.io/github/v/release/wwwfyl/asset-fetch?style=flat-square)](https://github.com/wwwfyl/asset-fetch/releases)
 
-Interactive CLI tool for downloading GitHub release assets from public and private repositories with fuzzy search. No GitHub CLI required - direct API integration. Features a `bubbletea` TUI, smart filtering, and token-based authentication.
+Interactive CLI tool for downloading GitHub release assets from public and private repositories with interactive search. No GitHub CLI required - direct API integration. Features a `bubbletea` TUI, smart filtering, and token-based authentication.
 
 ## Features
 
 -   **Interactive TUI:** Navigate releases and assets with a clean, keyboard-driven interface.
--   **Fuzzy Search:** Quickly find the release you're looking for.
+-   **Release Search:** Type to filter releases by substring (case-insensitive).
 -   **Multi-Asset Downloads:** Select and download multiple assets in a single batch operation.
 -   **Smart Filtering:** Use glob patterns (`*.zip`, `app-*-amd64`, etc.) to filter assets directly.
 -   **URL-Based Fetching:** Pass a GitHub releases URL directly to fetch assets from a specific repository or release.
@@ -60,7 +60,11 @@ The tool operates in two main modes: release selection and asset selection.
 
 ### Navigation
 
--   **`Up/Down`** or **`j/k`**: Navigate lists.
+-   **`Up/Down`**: Navigate lists.
+-   **`j/k`**: Navigate lists (when search is empty in release view).
+-   **Any character**: Filter releases by substring search (release view only).
+-   **`Backspace`**: Remove last character from search.
+-   **`Esc`**: Clear search filter.
 -   **`Enter`** or **`Space`**: Confirm release selection; toggle an asset for download in asset view.
 -   **`q`** or **`Ctrl+C`**: Go back to release list (from asset view), cancel download (while downloading), or exit.
 

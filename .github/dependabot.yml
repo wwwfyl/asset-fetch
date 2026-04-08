@@ -5,7 +5,7 @@ updates:
     schedule:
       interval: "weekly"
     labels:
-      - "maintenance"
+      - "ci"
 
   - package-ecosystem: "github-actions"
     directory: "/"

@@ -82,7 +82,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case StateDownloading, StateFinished:
 			// No input handling during download states
 			return m, nil
-		case StateChecksumVerification:
 		}
 
 	case releasesMsg:
@@ -323,10 +322,6 @@ func (m model) View() string {
 		s := "Download results:\n\n"
 		s += m.progressFormatter.RenderProgressTable(m.downloadQueue.assets, m.downloadQueue.progress)
 		s += "\n" + m.downloadResult + "\n"
-		return s
-	case StateChecksumVerification:
-		s := "Verifying checksums:\n\n"
-		s += m.progressFormatter.RenderProgressTable(m.downloadQueue.assets, m.downloadQueue.progress)
 		return s
 	}
 

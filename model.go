@@ -261,37 +261,45 @@ func (m model) handleReleasesInput(key string) (tea.Model, tea.Cmd) {
 
 // Handle input when in assets state
 func (m model) handleAssetsInput(key string) (tea.Model, tea.Cmd) {
-	navHandler := NavigationHandler{
-		cursor:   &m.listView.cursor,
-		maxItems: len(m.listView.items),
-	}
-
-	if navHandler.HandleKey(key) {
-		return m, nil
-	}
+	maxItems := len(m.listView.filteredItems)
 
 	switch key {
+	case "up":
+		if m.listView.cursor > 0 {
+			m.listView.cursor--
+		}
+	case "down":
+		if m.listView.cursor < maxItems-1 {
+			m.listView.cursor++
+		}
+	case "k":
+		if m.listView.filter != "" {
+			m.listView.AddToFilter("k")
+		} else if m.listView.cursor > 0 {
+			m.listView.cursor--
+		}
+	case "j":
+		if m.listView.filter != "" {
+			m.listView.AddToFilter("j")
+		} else if m.listView.cursor < maxItems-1 {
+			m.listView.cursor++
+		}
+	case "backspace":
+		m.listView.BackspaceFilter()
+	case "esc":
+		m.listView.SetFilter("")
 	case " ":
-		// Toggle selection
 		m.listView.ToggleSelection()
-
 	case "enter":
-		// Start downloading selected assets or current asset if none selected
 		selectedAssets := m.listView.GetSelectedAssets()
-
-		// If no assets selected, add current asset to queue
 		if len(selectedAssets) == 0 {
 			if currentAsset := m.listView.GetCurrentAsset(); currentAsset != nil {
 				selectedAssets = []AssetInfo{*currentAsset}
 			}
 		}
-
 		if len(selectedAssets) > 0 {
-			// Initialize download queue with selected assets
 			m.downloadQueue.Reset()
 			m.downloadQueue.AddMultiple(selectedAssets)
-
-			// Start first download
 			if !m.downloadQueue.IsEmpty() {
 				asset := m.downloadQueue.GetCurrent()
 				return m, tea.Batch(
@@ -301,6 +309,10 @@ func (m model) handleAssetsInput(key string) (tea.Model, tea.Cmd) {
 					downloadAsset(*asset),
 				)
 			}
+		}
+	default:
+		if len(key) == 1 {
+			m.listView.AddToFilter(key)
 		}
 	}
 

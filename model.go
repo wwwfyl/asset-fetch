@@ -31,7 +31,8 @@ type model struct {
 	progressFormatter ProgressFormatter
 
 	// Legacy fields for compatibility during transition
-	releases []Release
+	releases         []Release
+	fromReleasesView bool // true when user navigated from releases list
 
 	// URL-based execution
 	repoOwner         string
@@ -60,6 +61,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, func() tea.Msg {
 					return cancelDownloadMsg{}
 				}
+			} else if m.state == StateAssets && m.fromReleasesView {
+				// Go back to releases list
+				m.listView.SetReleases(m.releases)
+				m.state = StateReleases
+				m.fromReleasesView = false
+				return m, nil
 			} else {
 				m.quitting = true
 				return m, tea.Quit
@@ -227,6 +234,7 @@ func (m model) handleReleasesInput(key string) (tea.Model, tea.Cmd) {
 
 			m.listView.SetAssets(assets)
 			m.state = StateAssets
+			m.fromReleasesView = true
 		}
 	}
 

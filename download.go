@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path"
 	"strings"
 	"time"
 
@@ -225,25 +226,12 @@ func fetchReleases(m model) tea.Cmd {
 
 		for _, release := range releases {
 			for _, asset := range release.Assets {
-				// Use asset mask from config
-				assetMask := assetMaskValue
-
-				// Parse the mask into prefix and suffix
-				parts := strings.Split(assetMask, "*")
-				var prefix, suffix string
-				if len(parts) == 2 {
-					prefix = parts[0]
-					suffix = parts[1]
-				} else {
-					// If no asterisk or multiple asterisks, use the whole mask as prefix
-					prefix = assetMask
+				matched, err := path.Match(assetMaskValue, asset.Name)
+				if err != nil || !matched {
+					continue
 				}
-
-				// Check if asset name matches the mask
-				if strings.HasPrefix(asset.Name, prefix) && strings.HasSuffix(asset.Name, suffix) {
-					assetInfo := formatter.FormatAssetInfo(asset, release)
-					assets = append(assets, assetInfo)
-				}
+				assetInfo := formatter.FormatAssetInfo(asset, release)
+				assets = append(assets, assetInfo)
 			}
 		}
 

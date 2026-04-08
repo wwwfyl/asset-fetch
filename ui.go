@@ -99,15 +99,7 @@ func (ulv *UnifiedListView) BackspaceFilter() {
 }
 
 func fuzzyMatch(pattern, text string) bool {
-	pattern = strings.ToLower(pattern)
-	text = strings.ToLower(text)
-	pi := 0
-	for _, c := range text {
-		if pi < len(pattern) && rune(pattern[pi]) == c {
-			pi++
-		}
-	}
-	return pi == len(pattern)
+	return strings.Contains(strings.ToLower(text), strings.ToLower(pattern))
 }
 
 func (ulv *UnifiedListView) GetSelectedCount() int {

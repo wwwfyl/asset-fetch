@@ -160,7 +160,6 @@ const (
 	StateAssets
 	StateDownloading
 	StateFinished
-	StateChecksumVerification
 )
 
 // Custom messages

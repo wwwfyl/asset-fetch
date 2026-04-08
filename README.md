@@ -62,7 +62,7 @@ The tool operates in two main modes: release selection and asset selection.
 
 -   **`Up/Down`** or **`j/k`**: Navigate lists.
 -   **`Enter`** or **`Space`**: Confirm release selection; toggle an asset for download in asset view.
--   **`q`** or **`Ctrl+C`**: Go back or exit the program.
+-   **`q`** or **`Ctrl+C`**: Go back to release list (from asset view), cancel download (while downloading), or exit.
 
 ### 1. Release Selection
 

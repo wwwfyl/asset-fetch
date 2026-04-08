@@ -41,6 +41,7 @@ type UnifiedListView struct {
 	filteredItems   []interface{}
 	filteredIndices []int // original items index for each filteredItems entry; nil = 1:1
 	searchEnabled   bool
+	searchActive    bool
 }
 
 func (ulv *UnifiedListView) SetReleases(releases []Release) {
@@ -52,10 +53,11 @@ func (ulv *UnifiedListView) SetReleases(releases []Release) {
 	ulv.selected = nil
 	ulv.multiSelect = false
 	ulv.searchEnabled = true
+	ulv.searchActive = false
 	ulv.filter = ""
 	ulv.filteredItems = ulv.items
 	ulv.title = "Select release:"
-	ulv.instructions = "Type to search, '↑/↓' navigate, 'enter' to select, 'esc' to clear, 'q' to quit"
+	ulv.instructions = "Press '/' to search, '↑/↓' or 'j/k' to navigate, 'enter' to select, 'q' to quit"
 }
 
 func (ulv *UnifiedListView) SetAssets(assets []AssetInfo) {
@@ -67,11 +69,12 @@ func (ulv *UnifiedListView) SetAssets(assets []AssetInfo) {
 	ulv.selected = make([]bool, len(assets))
 	ulv.multiSelect = true
 	ulv.searchEnabled = true
+	ulv.searchActive = false
 	ulv.filter = ""
 	ulv.filteredItems = ulv.items
 	ulv.filteredIndices = nil
 	ulv.title = "Select assets to download (press space to select, enter to download):"
-	ulv.instructions = "Type to search, '↑/↓' navigate, 'space' to select, 'enter' to download, 'esc' to clear, 'q' to go back"
+	ulv.instructions = "Press '/' to search, '↑/↓' or 'j/k' to navigate, 'space' to select, 'enter' to download, 'q' to go back"
 }
 
 func (ulv *UnifiedListView) SetFilter(f string) {
@@ -99,6 +102,8 @@ func (ulv *UnifiedListView) SetFilter(f string) {
 }
 
 func (ulv *UnifiedListView) AddToFilter(ch string) { ulv.SetFilter(ulv.filter + ch) }
+
+func (ulv *UnifiedListView) ActivateSearch() { ulv.searchActive = true }
 
 func (ulv *UnifiedListView) BackspaceFilter() {
 	if len(ulv.filter) > 0 {
@@ -183,7 +188,11 @@ func (ulv *UnifiedListView) Render() string {
 
 	// Search prompt
 	if ulv.searchEnabled {
-		s += searchStyle.Render("/ "+ulv.filter+"█") + "\n\n"
+		if ulv.searchActive {
+			s += searchStyle.Render("/ "+ulv.filter+"█") + "\n\n"
+		} else if ulv.filter != "" {
+			s += searchStyle.Render("/ "+ulv.filter) + "\n\n"
+		}
 	}
 
 	// Display filtered items

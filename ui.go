@@ -82,7 +82,7 @@ func (ulv *UnifiedListView) SetFilter(f string) {
 	ulv.filteredItems = []interface{}{}
 	for _, item := range ulv.items {
 		if r, ok := item.(Release); ok {
-			if fuzzyMatch(f, r.TagName+" "+r.Name) {
+			if fuzzyMatch(f, r.TagName) || fuzzyMatch(f, r.Name) {
 				ulv.filteredItems = append(ulv.filteredItems, item)
 			}
 		}

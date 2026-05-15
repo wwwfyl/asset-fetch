@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"net/url"
 	"os"
@@ -51,6 +52,8 @@ func main() {
 		}
 		defer f.Close()
 		log.Printf("debug logging enabled; args=%v", os.Args)
+	} else {
+		log.SetOutput(io.Discard)
 	}
 
 	if len(args) > 0 {

@@ -121,34 +121,43 @@ func loadGlobalConfig() (*GlobalConfig, error) {
 	return &cfg, nil
 }
 
-// findConfigFile returns the path to the first existing afetch.conf in either
-// the binary's directory or the platform-specific home location.
+// findConfigFile returns the first existing config file. It checks afetch.yaml
+// (canonical) and afetch.conf (legacy) in both the binary's directory and the
+// platform-specific home location.
 func findConfigFile() (string, error) {
 	scriptDir, err := filepath.Abs(filepath.Dir(os.Args[0]))
 	if err != nil {
 		return "", err
 	}
-	configFile := filepath.Join(scriptDir, "afetch.conf")
 
-	var homeConfigFile string
+	var homeDir string
 	if runtime.GOOS == "windows" {
 		if localAppData := os.Getenv("LOCALAPPDATA"); localAppData != "" {
-			homeConfigFile = filepath.Join(localAppData, "afetch", "afetch.conf")
+			homeDir = filepath.Join(localAppData, "afetch")
 		}
 	} else {
-		homeConfigFile = filepath.Join(os.Getenv("HOME"), ".config", "afetch.conf")
+		homeDir = filepath.Join(os.Getenv("HOME"), ".config")
 	}
 
-	if _, err := os.Stat(configFile); err == nil {
-		return configFile, nil
+	// Probe order: script dir (.yaml, .conf) then home dir (.yaml, .conf).
+	candidates := []string{
+		filepath.Join(scriptDir, "afetch.yaml"),
+		filepath.Join(scriptDir, "afetch.conf"),
 	}
-	if homeConfigFile != "" {
-		if _, err := os.Stat(homeConfigFile); err == nil {
-			return homeConfigFile, nil
+	if homeDir != "" {
+		candidates = append(candidates,
+			filepath.Join(homeDir, "afetch.yaml"),
+			filepath.Join(homeDir, "afetch.conf"),
+		)
+	}
+
+	for _, p := range candidates {
+		if _, err := os.Stat(p); err == nil {
+			return p, nil
 		}
-		return "", fmt.Errorf("configuration file not found in %s or %s", configFile, homeConfigFile)
 	}
-	return "", fmt.Errorf("configuration file not found in %s", configFile)
+
+	return "", fmt.Errorf("configuration file not found (checked: %s)", strings.Join(candidates, ", "))
 }
 
 // isLegacyFormat reports whether the content contains REPO_OWNER= or REPO_NAME=
@@ -163,12 +172,13 @@ func isLegacyFormat(content []byte) bool {
 	return false
 }
 
-// migrateLegacyConfig converts a key=value config to YAML in-place, keeping the
-// original at <path>.bak. The new YAML content is returned for immediate parsing.
-func migrateLegacyConfig(path string, oldContent []byte) ([]byte, error) {
+// migrateLegacyConfig converts a key=value config to YAML next to the original,
+// changing the extension to .yaml. The original file is preserved as <oldPath>.bak.
+// Returns the new YAML content.
+func migrateLegacyConfig(oldPath string, oldContent []byte) ([]byte, error) {
 	legacy := parseLegacyContent(oldContent)
 
-	backupPath := path + ".bak"
+	backupPath := oldPath + ".bak"
 	if err := os.WriteFile(backupPath, oldContent, 0600); err != nil {
 		return nil, fmt.Errorf("creating backup %s: %w", backupPath, err)
 	}
@@ -195,11 +205,18 @@ func migrateLegacyConfig(path string, oldContent []byte) ([]byte, error) {
 		return nil, fmt.Errorf("marshaling YAML: %w", err)
 	}
 
-	if err := os.WriteFile(path, yamlContent, 0600); err != nil {
-		return nil, fmt.Errorf("writing migrated config %s: %w", path, err)
+	newPath := strings.TrimSuffix(oldPath, filepath.Ext(oldPath)) + ".yaml"
+	if err := os.WriteFile(newPath, yamlContent, 0600); err != nil {
+		return nil, fmt.Errorf("writing migrated config %s: %w", newPath, err)
 	}
 
-	fmt.Fprintf(os.Stderr, "migrated %s to YAML format (backup: %s)\n", path, backupPath)
+	if newPath != oldPath {
+		if err := os.Remove(oldPath); err != nil {
+			return nil, fmt.Errorf("removing legacy file %s: %w", oldPath, err)
+		}
+	}
+
+	fmt.Fprintf(os.Stderr, "migrated %s to %s (backup: %s)\n", oldPath, newPath, backupPath)
 	return yamlContent, nil
 }
 

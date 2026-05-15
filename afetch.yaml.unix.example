@@ -1,0 +1,42 @@
+# Example afetch config for Linux / macOS.
+# Place at ~/.config/afetch.yaml or alongside the binary as ./afetch.yaml.
+
+# Optional global GitHub token (overridden per-app if set there).
+github_token: ""
+
+apps:
+  - name: lazygit
+    repo: jesseduffield/lazygit
+    release_type: latest
+    asset_mask: "*linux_x86_64.tar.gz"
+    install_dir: ~/bin
+    version:
+      command: lazygit --version
+      regex: 'version=([0-9.]+)'
+    install:
+      unpack: tar.gz
+      steps:
+        - name: Move binary
+          run: mv lazygit $INSTALL_DIR/lazygit
+    uninstall:
+      steps:
+        - name: Remove binary
+          run: rm -f $INSTALL_DIR/lazygit
+
+  - name: delta
+    repo: dandavison/delta
+    release_type: latest-stable
+    asset_mask: "*x86_64-unknown-linux-gnu.tar.gz"
+    install_dir: ~/bin
+    version:
+      command: delta --version
+      regex: 'delta (\S+)'
+    install:
+      unpack: tar.gz
+      steps:
+        - name: Move binary
+          run: mv delta-*/delta $INSTALL_DIR/delta
+    uninstall:
+      steps:
+        - name: Remove binary
+          run: rm -f $INSTALL_DIR/delta

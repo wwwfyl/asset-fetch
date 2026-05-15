@@ -85,28 +85,14 @@ func downloadAsset(ctx context.Context, asset AssetInfo, token, destDir string) 
 
 // fetchReleases fetches GitHub releases and returns a bubbletea message with either
 // a release list or a pre-filtered asset list (when ASSET_MASK is set).
+// All parameters are read from model fields; no config file is loaded here.
 func fetchReleases(m model) tea.Cmd {
 	return func() tea.Msg {
-		config, err := loadConfig()
-		if err != nil {
-			if m.repoOwner == "" || m.repoName == "" {
-				return errorMsg(err.Error())
-			}
+		if m.repoOwner == "" || m.repoName == "" {
+			return errorMsg("REPO_OWNER and REPO_NAME are required")
 		}
 
-		repoOwner := m.repoOwner
-		repoName := m.repoName
-		if repoOwner == "" || repoName == "" {
-			repoOwner = config.RepoOwner
-			repoName = config.RepoName
-		}
-
-		var token string
-		if config != nil {
-			token = config.GitHubToken
-		}
-
-		releases, err := fetchReleasesFromGitHub(context.Background(), repoOwner, repoName, m.tag, token)
+		releases, err := fetchReleasesFromGitHub(m.downloadCtx, m.repoOwner, m.repoName, m.tag, m.gitHubToken)
 		if err != nil {
 			return errorMsg(err.Error())
 		}
@@ -127,8 +113,6 @@ func fetchReleases(m model) tea.Cmd {
 		assetMaskValue := ""
 		if m.assetMask != nil {
 			assetMaskValue = *m.assetMask
-		} else if config != nil {
-			assetMaskValue = config.AssetMask
 		}
 
 		if assetMaskValue == "" || m.startWithReleases {

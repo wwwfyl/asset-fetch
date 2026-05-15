@@ -55,15 +55,27 @@ func main() {
 		}
 	}
 
-	// Load token from config now so downloadAsset never needs to call loadConfig itself.
-	var gitHubToken string
+	// Load config once here so no download or fetch function needs to call loadConfig.
+	var gitHubToken, configErr string
 	if cfg, err := loadConfig(); err == nil {
 		gitHubToken = cfg.GitHubToken
+		if repoOwner == "" {
+			repoOwner = cfg.RepoOwner
+		}
+		if repoName == "" {
+			repoName = cfg.RepoName
+		}
+		if assetMask == nil && cfg.AssetMask != "" {
+			assetMask = &cfg.AssetMask
+		}
+	} else if repoOwner == "" || repoName == "" {
+		// No URL supplied and config is missing — surface the error in the TUI.
+		configErr = err.Error()
 	}
 	downloadDir, _ := os.Getwd()
 
 	m := model{
-		loading:           true,
+		loading:           configErr == "",
 		state:             StateReleases,
 		repoOwner:         repoOwner,
 		repoName:          repoName,
@@ -74,6 +86,7 @@ func main() {
 		downloadCancel:    cancel,
 		gitHubToken:       gitHubToken,
 		downloadDir:       downloadDir,
+		errorMsg:          configErr,
 	}
 
 	p := tea.NewProgram(m)

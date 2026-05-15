@@ -90,3 +90,5 @@ func loadConfig() (*Config, error) {
 
 	return config, nil
 }
+
+// TODO: loadGlobalConfig() — YAML multi-app config for dashboard mode

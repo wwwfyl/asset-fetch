@@ -76,26 +76,39 @@ func main() {
 		}
 	}
 
-	// Load config once here so no download or fetch function needs to call loadConfig.
+	// Load the YAML multi-app config (auto-migrates legacy key=value files).
 	var gitHubToken, configErr string
-	if cfg, err := loadConfig(); err == nil {
+	var apps []AppConfig
+	if cfg, err := loadGlobalConfig(); err == nil {
 		gitHubToken = cfg.GitHubToken
-		if repoOwner == "" {
-			repoOwner = cfg.RepoOwner
+		apps = cfg.Apps
+		// Single-app mode: derive owner/repo/mask/token from the first app
+		// for the current StateReleases/StateAssets flow.
+		if len(apps) > 0 {
+			app := apps[0]
+			if app.GitHubToken != "" {
+				gitHubToken = app.GitHubToken
+			}
+			if repoOwner == "" || repoName == "" {
+				if parts := strings.SplitN(app.Repo, "/", 2); len(parts) == 2 {
+					if repoOwner == "" {
+						repoOwner = parts[0]
+					}
+					if repoName == "" {
+						repoName = parts[1]
+					}
+				}
+			}
+			if assetMask == nil && app.AssetMask != "" {
+				assetMask = &app.AssetMask
+			}
 		}
-		if repoName == "" {
-			repoName = cfg.RepoName
-		}
-		if assetMask == nil && cfg.AssetMask != "" {
-			assetMask = &cfg.AssetMask
-		}
-		log.Printf("loadConfig ok: owner=%q repo=%q tokenSet=%v mask=%q", cfg.RepoOwner, cfg.RepoName, cfg.GitHubToken != "", cfg.AssetMask)
+		log.Printf("loadGlobalConfig ok: apps=%d tokenSet=%v", len(apps), gitHubToken != "")
 	} else if repoOwner == "" || repoName == "" {
-		// No URL supplied and config is missing — surface the error in the TUI.
 		configErr = err.Error()
-		log.Printf("loadConfig failed and no URL: %v", err)
+		log.Printf("loadGlobalConfig failed and no URL: %v", err)
 	} else {
-		log.Printf("loadConfig failed but URL provided, continuing: %v", err)
+		log.Printf("loadGlobalConfig failed but URL provided, continuing: %v", err)
 	}
 	downloadDir, _ := os.Getwd()
 	log.Printf("model init: owner=%q repo=%q tag=%q assetMaskSet=%v downloadDir=%q errorMsg=%q", repoOwner, repoName, tag, assetMask != nil, downloadDir, configErr)
@@ -113,6 +126,7 @@ func main() {
 		gitHubToken:       gitHubToken,
 		downloadDir:       downloadDir,
 		errorMsg:          configErr,
+		apps:              apps,
 	}
 
 	p := tea.NewProgram(m)

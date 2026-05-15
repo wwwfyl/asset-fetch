@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -120,12 +119,12 @@ func downloadAsset(asset AssetInfo) tea.Cmd {
 	}
 }
 
-// fetchReleases get list of releases with ASSET_MASK filtering
+// fetchReleases fetches GitHub releases and returns a bubbletea message with either
+// a release list or a pre-filtered asset list (when ASSET_MASK is set).
 func fetchReleases(m model) tea.Cmd {
 	return func() tea.Msg {
 		config, err := loadConfig()
 		if err != nil {
-			// If URL is provided, we might not need a config file
 			if m.repoOwner == "" || m.repoName == "" {
 				return errorMsg(err.Error())
 			}
@@ -138,60 +137,19 @@ func fetchReleases(m model) tea.Cmd {
 			repoName = config.RepoName
 		}
 
-		var apiURL string
-		if m.tag != "" {
-			apiURL = fmt.Sprintf("https://api.github.com/repos/%s/%s/releases/tags/%s", repoOwner, repoName, m.tag)
-		} else {
-			apiURL = fmt.Sprintf("https://api.github.com/repos/%s/%s/releases", repoOwner, repoName)
-		}
-
-		client := &http.Client{}
-		req, err := http.NewRequest("GET", apiURL, nil)
-		if err != nil {
-			return errorMsg(err.Error())
-		}
-
-		req.Header.Set("Accept", "application/vnd.github+json")
-
-		// Use token from config if available
 		var token string
 		if config != nil {
 			token = config.GitHubToken
 		}
 
-		// Only add authorization header if token is provided
-		if token != "" {
-			req.Header.Set("Authorization", "Bearer "+token)
-		}
-		req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
-
-		resp, err := client.Do(req)
-		if err != nil {
-			return errorMsg(err.Error())
-		}
-		defer func() {
-			if closeErr := resp.Body.Close(); closeErr != nil {
-				// Log the error but don't return it as it's in defer
-			}
-		}()
-
-		if resp.StatusCode != http.StatusOK {
-			return errorMsg(fmt.Sprintf("GitHub API error: %d", resp.StatusCode))
-		}
-
-		body, err := io.ReadAll(resp.Body)
+		releases, err := fetchReleasesFromGitHub(context.Background(), repoOwner, repoName, m.tag, token)
 		if err != nil {
 			return errorMsg(err.Error())
 		}
 
-		// If a specific tag is requested, the API returns a single release object
+		// Tag-specific fetch: expose assets from that single release directly.
 		if m.tag != "" {
-			var release Release
-			err = json.Unmarshal(body, &release)
-			if err != nil {
-				return errorMsg(err.Error())
-			}
-			releases := []Release{release}
+			release := releases[0]
 			var assets []AssetInfo
 			formatter := AssetFormatter{}
 			for _, asset := range release.Assets {
@@ -202,12 +160,6 @@ func fetchReleases(m model) tea.Cmd {
 			return releasesMsg{assets: assets, releases: releases}
 		}
 
-		var releases []Release
-		err = json.Unmarshal(body, &releases)
-		if err != nil {
-			return errorMsg(err.Error())
-		}
-
 		assetMaskValue := ""
 		if m.assetMask != nil {
 			assetMaskValue = *m.assetMask
@@ -215,15 +167,13 @@ func fetchReleases(m model) tea.Cmd {
 			assetMaskValue = config.AssetMask
 		}
 
-		// If AssetMask is empty OR if we are starting with releases view from URL
 		if assetMaskValue == "" || m.startWithReleases {
 			return releasesMsg{releases: releases}
 		}
 
-		// Filter assets by ASSET_MASK
+		// Filter assets by ASSET_MASK across all releases.
 		var assets []AssetInfo
 		formatter := AssetFormatter{}
-
 		for _, release := range releases {
 			for _, asset := range release.Assets {
 				matched, err := path.Match(assetMaskValue, asset.Name)

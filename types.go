@@ -28,12 +28,56 @@ func (ps *ProgressState) Get() (downloaded, total int64) {
 	return ps.downloaded, ps.total
 }
 
-// Config structure for storing configuration
+// Config is the legacy single-app key=value config (kept for migration to GlobalConfig).
 type Config struct {
 	GitHubToken string
 	RepoOwner   string
 	RepoName    string
 	AssetMask   string
+}
+
+// GlobalConfig is the top-level YAML config: a global token and a list of tracked apps.
+type GlobalConfig struct {
+	GitHubToken string      `yaml:"github_token"`
+	Apps        []AppConfig `yaml:"apps"`
+}
+
+// AppConfig is one tracked application: where to fetch it from, how to detect the local
+// version, which asset to download, and what to do with it after download.
+type AppConfig struct {
+	Name        string          `yaml:"name"`
+	Repo        string          `yaml:"repo"`         // "owner/repo"
+	ReleaseType string          `yaml:"release_type"` // latest | latest-stable | pre-release
+	AssetMask   string          `yaml:"asset_mask"`
+	InstallDir  string          `yaml:"install_dir"`  // optional; default depends on euid
+	GitHubToken string          `yaml:"github_token"` // optional per-app override
+	Version     VersionConfig   `yaml:"version"`
+	Install     InstallConfig   `yaml:"install"`
+	Uninstall   UninstallConfig `yaml:"uninstall"`
+}
+
+// VersionConfig describes how to detect the currently installed version of an app.
+type VersionConfig struct {
+	Command string `yaml:"command"` // full command line, e.g. "lazygit --version"
+	Regex   string `yaml:"regex"`   // first capture group is the version string
+}
+
+// InstallConfig describes how to unpack the downloaded asset and what to do next.
+type InstallConfig struct {
+	Unpack string        `yaml:"unpack"` // auto | tar.gz | tar.bz2 | tar.xz | zip | gz | none
+	Steps  []InstallStep `yaml:"steps"`
+}
+
+// UninstallConfig describes how to remove an installed app.
+type UninstallConfig struct {
+	Steps []InstallStep `yaml:"steps"`
+}
+
+// InstallStep is one shell command to run during install/uninstall.
+// Run is executed as `sh -c "$run"` with $ASSET_FILE, $WORK_DIR, $INSTALL_DIR, $VERSION set.
+type InstallStep struct {
+	Name string `yaml:"name"`
+	Run  string `yaml:"run"`
 }
 
 // Asset structure for storing artifact information

@@ -5,9 +5,28 @@ import (
 	"sync"
 )
 
-// Global variable for download progress
-var downloadProgress int64
-var downloadProgressMutex sync.Mutex
+// ProgressState is a thread-safe container for a single download's byte counters.
+// Held by pointer in model so bubbletea model copies share the same instance.
+type ProgressState struct {
+	mu         sync.Mutex
+	downloaded int64
+	total      int64
+}
+
+// Update sets the current byte counters; safe to call from any goroutine.
+func (ps *ProgressState) Update(downloaded, total int64) {
+	ps.mu.Lock()
+	ps.downloaded = downloaded
+	ps.total = total
+	ps.mu.Unlock()
+}
+
+// Get returns the current byte counters; safe to call from any goroutine.
+func (ps *ProgressState) Get() (downloaded, total int64) {
+	ps.mu.Lock()
+	defer ps.mu.Unlock()
+	return ps.downloaded, ps.total
+}
 
 // Config structure for storing configuration
 type Config struct {

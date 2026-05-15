@@ -18,7 +18,8 @@ import (
 
 // downloadAsset downloads an asset via HTTP into destDir and returns a bubbletea message.
 // token is the GitHub personal access token (may be empty for public repos).
-func downloadAsset(ctx context.Context, asset AssetInfo, token, destDir string) tea.Cmd {
+// progress is updated concurrently as bytes arrive; the tick loop reads it from the model.
+func downloadAsset(ctx context.Context, asset AssetInfo, token, destDir string, progress *ProgressState) tea.Cmd {
 	return func() tea.Msg {
 		req, err := http.NewRequestWithContext(ctx, "GET", asset.URL, nil)
 		if err != nil {
@@ -58,9 +59,7 @@ func downloadAsset(ctx context.Context, asset AssetInfo, token, destDir string) 
 			reader: resp.Body,
 			total:  asset.Size,
 			onProgress: func(downloaded, total int64) {
-				downloadProgressMutex.Lock()
-				downloadProgress = downloaded
-				downloadProgressMutex.Unlock()
+				progress.Update(downloaded, total)
 			},
 		}
 

@@ -49,6 +49,9 @@ type model struct {
 	// Injected from config at startup
 	gitHubToken string
 	downloadDir string // directory where assets are saved; defaults to cwd
+
+	// Per-download progress shared between the download goroutine and the tick loop.
+	currentProgress *ProgressState
 }
 
 // Init bubbletea initialization
@@ -127,13 +130,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		})
 
 	case updateDownloadProgressMsg:
-		// Update download progress
-		downloadProgressMutex.Lock()
-		progress := downloadProgress
-		downloadProgressMutex.Unlock()
-
-		// Update download queue progress
-		m.downloadQueue.UpdateProgress(progress, msg.asset.Size)
+		downloaded, _ := m.currentProgress.Get()
+		m.downloadQueue.UpdateProgress(downloaded, msg.asset.Size)
 
 		return m, tea.Tick(time.Second, func(tick time.Time) tea.Msg {
 			if m.downloading {
@@ -147,13 +145,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		// Move to next download in queue
 		if m.downloadQueue.NextDownload() {
-			// Start next download
 			asset := m.downloadQueue.GetCurrent()
+			m.currentProgress = &ProgressState{}
 			return m, tea.Batch(
 				func() tea.Msg {
 					return startDownloadProgressMsg{asset: *asset}
 				},
-				downloadAsset(m.downloadCtx, *asset, m.gitHubToken, m.downloadDir),
+				downloadAsset(m.downloadCtx, *asset, m.gitHubToken, m.downloadDir, m.currentProgress),
 			)
 		} else {
 			// All downloads completed (with errors)
@@ -184,15 +182,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		// Handle checksum verification result
 		if msg.success {
-			// Check if there are more downloads in the queue
 			if m.downloadQueue.NextDownload() {
-				// Start next download
 				asset := m.downloadQueue.GetCurrent()
+				m.currentProgress = &ProgressState{}
 				return m, tea.Batch(
 					func() tea.Msg {
 						return startDownloadProgressMsg{asset: *asset}
 					},
-					downloadAsset(m.downloadCtx, *asset, m.gitHubToken, m.downloadDir),
+					downloadAsset(m.downloadCtx, *asset, m.gitHubToken, m.downloadDir, m.currentProgress),
 				)
 			} else {
 				// All downloads completed
@@ -353,11 +350,12 @@ func (m model) startDownload() (tea.Model, tea.Cmd) {
 		m.downloadQueue.AddMultiple(selectedAssets)
 		if !m.downloadQueue.IsEmpty() {
 			asset := m.downloadQueue.GetCurrent()
+			m.currentProgress = &ProgressState{}
 			return m, tea.Batch(
 				func() tea.Msg {
 					return startDownloadProgressMsg{asset: *asset}
 				},
-				downloadAsset(m.downloadCtx, *asset, m.gitHubToken, m.downloadDir),
+				downloadAsset(m.downloadCtx, *asset, m.gitHubToken, m.downloadDir, m.currentProgress),
 			)
 		}
 	}

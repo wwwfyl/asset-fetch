@@ -62,9 +62,11 @@ type VersionConfig struct {
 	Regex   string `yaml:"regex"`   // first capture group is the version string
 }
 
-// InstallConfig describes how to unpack the downloaded asset and what to do next.
+// InstallConfig groups the unpack and install phases. Both are lists of shell
+// steps executed in order; unpack runs first (typically to extract the asset)
+// and steps follows (typically to move files into INSTALL_DIR).
 type InstallConfig struct {
-	Unpack string        `yaml:"unpack"` // auto | tar.gz | tar.bz2 | tar.xz | zip | gz | none
+	Unpack []InstallStep `yaml:"unpack"`
 	Steps  []InstallStep `yaml:"steps"`
 }
 

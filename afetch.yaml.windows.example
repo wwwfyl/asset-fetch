@@ -18,10 +18,11 @@ apps:
       command: lazygit.exe --version
       regex: 'version=([0-9.]+)'
     install:
-      unpack: zip
+      unpack:
+        - run: unzip -o "$ASSET_FILE" -d "$WORK_DIR"
       steps:
         - name: Move binary
-          run: mv lazygit.exe "$INSTALL_DIR/lazygit.exe"
+          run: mv "$WORK_DIR/lazygit.exe" "$INSTALL_DIR/lazygit.exe"
     uninstall:
       steps:
         - name: Remove binary
@@ -36,10 +37,11 @@ apps:
       command: gh.exe --version
       regex: 'gh version (\S+)'
     install:
-      unpack: zip
+      unpack:
+        - run: unzip -o "$ASSET_FILE" -d "$WORK_DIR"
       steps:
         - name: Move binary
-          run: mv bin/gh.exe "$INSTALL_DIR/gh.exe"
+          run: mv "$WORK_DIR/bin/gh.exe" "$INSTALL_DIR/gh.exe"
     uninstall:
       steps:
         - name: Remove binary

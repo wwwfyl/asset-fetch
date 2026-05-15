@@ -35,17 +35,21 @@ apps:
       regex: 'version=([0-9.]+)'
 
     # What to do after the asset is downloaded.
-    #   unpack: auto | tar.gz | tar.bz2 | tar.xz | zip | gz | none
-    # Each step runs as `sh -c "<run>"` in the unpacked work directory, with:
+    #
+    # All install/uninstall steps run as `sh -c "<run>"` in $WORK_DIR with:
     #   $ASSET_FILE   path to the downloaded asset
-    #   $WORK_DIR     the unpacked work directory (also cwd of the step)
+    #   $WORK_DIR     work directory (also cwd of every step)
     #   $INSTALL_DIR  install_dir from above, or the default
     #   $VERSION      the release tag (e.g. v0.44.1)
+    #
+    # `run:` accepts multi-line shell scripts via YAML `|`.
     install:
-      unpack: tar.gz
+      unpack:
+        - name: Extract archive
+          run: tar xzf $ASSET_FILE -C $WORK_DIR
       steps:
         - name: Move binary
-          run: mv lazygit $INSTALL_DIR/lazygit
+          run: mv $WORK_DIR/lazygit $INSTALL_DIR/lazygit
 
     # Steps executed by the dashboard's "uninstall" action.
     # The same env variables are available except $ASSET_FILE / $WORK_DIR.

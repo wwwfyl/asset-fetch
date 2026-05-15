@@ -14,10 +14,11 @@ apps:
       command: lazygit --version
       regex: 'version=([0-9.]+)'
     install:
-      unpack: tar.gz
+      unpack:
+        - run: tar xzf $ASSET_FILE -C $WORK_DIR
       steps:
         - name: Move binary
-          run: mv lazygit $INSTALL_DIR/lazygit
+          run: mv $WORK_DIR/lazygit $INSTALL_DIR/lazygit
     uninstall:
       steps:
         - name: Remove binary
@@ -32,10 +33,11 @@ apps:
       command: delta --version
       regex: 'delta (\S+)'
     install:
-      unpack: tar.gz
+      unpack:
+        - run: tar xzf $ASSET_FILE -C $WORK_DIR
       steps:
         - name: Move binary
-          run: mv delta-*/delta $INSTALL_DIR/delta
+          run: mv $WORK_DIR/delta-*/delta $INSTALL_DIR/delta
     uninstall:
       steps:
         - name: Remove binary

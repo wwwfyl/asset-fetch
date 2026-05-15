@@ -55,6 +55,13 @@ func main() {
 		}
 	}
 
+	// Load token from config now so downloadAsset never needs to call loadConfig itself.
+	var gitHubToken string
+	if cfg, err := loadConfig(); err == nil {
+		gitHubToken = cfg.GitHubToken
+	}
+	downloadDir, _ := os.Getwd()
+
 	m := model{
 		loading:           true,
 		state:             StateReleases,
@@ -65,6 +72,8 @@ func main() {
 		startWithReleases: startWithReleases,
 		downloadCtx:       ctx,
 		downloadCancel:    cancel,
+		gitHubToken:       gitHubToken,
+		downloadDir:       downloadDir,
 	}
 
 	p := tea.NewProgram(m)

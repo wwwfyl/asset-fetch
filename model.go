@@ -45,6 +45,10 @@ type model struct {
 	// Download lifecycle (per-model, not global)
 	downloadCtx    context.Context
 	downloadCancel context.CancelFunc
+
+	// Injected from config at startup
+	gitHubToken string
+	downloadDir string // directory where assets are saved; defaults to cwd
 }
 
 // Init bubbletea initialization
@@ -149,7 +153,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				func() tea.Msg {
 					return startDownloadProgressMsg{asset: *asset}
 				},
-				downloadAsset(m.downloadCtx, *asset),
+				downloadAsset(m.downloadCtx, *asset, m.gitHubToken, m.downloadDir),
 			)
 		} else {
 			// All downloads completed (with errors)
@@ -188,7 +192,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					func() tea.Msg {
 						return startDownloadProgressMsg{asset: *asset}
 					},
-					downloadAsset(m.downloadCtx, *asset),
+					downloadAsset(m.downloadCtx, *asset, m.gitHubToken, m.downloadDir),
 				)
 			} else {
 				// All downloads completed
@@ -353,7 +357,7 @@ func (m model) startDownload() (tea.Model, tea.Cmd) {
 				func() tea.Msg {
 					return startDownloadProgressMsg{asset: *asset}
 				},
-				downloadAsset(m.downloadCtx, *asset),
+				downloadAsset(m.downloadCtx, *asset, m.gitHubToken, m.downloadDir),
 			)
 		}
 	}

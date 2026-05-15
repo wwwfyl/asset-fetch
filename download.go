@@ -16,21 +16,17 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
-// downloadAsset downloads an asset via HTTP and returns a bubbletea message with the result.
-func downloadAsset(ctx context.Context, asset AssetInfo) tea.Cmd {
+// downloadAsset downloads an asset via HTTP into destDir and returns a bubbletea message.
+// token is the GitHub personal access token (may be empty for public repos).
+func downloadAsset(ctx context.Context, asset AssetInfo, token, destDir string) tea.Cmd {
 	return func() tea.Msg {
-		config, err := loadConfig()
-		if err != nil {
-			return downloadErrorMsg(err.Error())
-		}
-
 		req, err := http.NewRequestWithContext(ctx, "GET", asset.URL, nil)
 		if err != nil {
 			return downloadErrorMsg(fmt.Sprintf("Error creating request: %v", err))
 		}
 		req.Header.Set("Accept", "application/octet-stream")
-		if config.GitHubToken != "" {
-			req.Header.Set("Authorization", "Bearer "+config.GitHubToken)
+		if token != "" {
+			req.Header.Set("Authorization", "Bearer "+token)
 		}
 		req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
 
@@ -47,7 +43,12 @@ func downloadAsset(ctx context.Context, asset AssetInfo) tea.Cmd {
 			return downloadErrorMsg(fmt.Sprintf("HTTP error: %d", resp.StatusCode))
 		}
 
-		out, err := os.Create(asset.Name)
+		filePath := asset.Name
+		if destDir != "" {
+			filePath = destDir + string(os.PathSeparator) + asset.Name
+		}
+
+		out, err := os.Create(filePath)
 		if err != nil {
 			return downloadErrorMsg(fmt.Sprintf("Error creating file: %v", err))
 		}
@@ -66,19 +67,19 @@ func downloadAsset(ctx context.Context, asset AssetInfo) tea.Cmd {
 		_, err = io.Copy(out, progressReader)
 		if err != nil {
 			if errors.Is(ctx.Err(), context.Canceled) {
-				os.Remove(asset.Name) //nolint:errcheck
+				os.Remove(filePath) //nolint:errcheck
 				return downloadErrorMsg("Download cancelled by user")
 			}
-			os.Remove(asset.Name) //nolint:errcheck
+			os.Remove(filePath) //nolint:errcheck
 			return downloadErrorMsg(fmt.Sprintf("Error writing file: %v", err))
 		}
 
-		if err := verifyChecksum(asset.Name, asset.Digest); err != nil {
-			os.Remove(asset.Name) //nolint:errcheck
-			return downloadErrorMsg(fmt.Sprintf("Checksum verification failed for %s: %v", asset.Name, err))
+		if err := verifyChecksum(filePath, asset.Digest); err != nil {
+			os.Remove(filePath) //nolint:errcheck
+			return downloadErrorMsg(fmt.Sprintf("Checksum verification failed for %s: %v", filePath, err))
 		}
 
-		return checksumVerifiedMsg{filename: asset.Name, success: true}
+		return checksumVerifiedMsg{filename: filePath, success: true}
 	}
 }
 

@@ -364,31 +364,28 @@ func (m model) startDownload() (tea.Model, tea.Cmd) {
 
 // View interface display - unified version
 func (m model) View() string {
-	switch m.state {
-	case StateReleases:
-		return m.listView.Render()
-	case StateAssets:
-		return m.listView.Render()
-	case StateDownloading:
-		s := "Download progress:\n\n"
-		s += m.progressFormatter.RenderProgressTable(m.downloadQueue.assets, m.downloadQueue.progress)
-		return s
-	case StateFinished:
-		s := "Download results:\n\n"
-		s += m.progressFormatter.RenderProgressTable(m.downloadQueue.assets, m.downloadQueue.progress)
-		s += "\n" + m.downloadResult + "\n"
-		return s
-	}
-
-	// Default states
+	// Overlay states take precedence over the in-progress view so that
+	// errors and loading spinners are visible before lists are populated.
 	switch {
 	case m.quitting:
 		return "Goodbye!\n"
-	case m.loading:
-		return "Searching for available artifacts...\n"
 	case m.errorMsg != "":
 		return fmt.Sprintf("Error: %s\n", m.errorMsg)
-	default:
-		return "No artifacts found\n"
+	case m.loading:
+		return "Searching for available artifacts...\n"
 	}
+
+	switch m.state {
+	case StateReleases, StateAssets:
+		return m.listView.Render()
+	case StateDownloading:
+		return "Download progress:\n\n" +
+			m.progressFormatter.RenderProgressTable(m.downloadQueue.assets, m.downloadQueue.progress)
+	case StateFinished:
+		return "Download results:\n\n" +
+			m.progressFormatter.RenderProgressTable(m.downloadQueue.assets, m.downloadQueue.progress) +
+			"\n" + m.downloadResult + "\n"
+	}
+
+	return "No artifacts found\n"
 }

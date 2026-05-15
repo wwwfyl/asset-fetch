@@ -1,14 +1,9 @@
 package main
 
 import (
-	"context"
 	"io"
 	"sync"
 )
-
-// Global context and cancel function for download cancellation
-var downloadContext context.Context
-var downloadCancel context.CancelFunc
 
 // Global variable for download progress
 var downloadProgress int64

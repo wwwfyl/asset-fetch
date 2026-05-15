@@ -16,106 +16,69 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
-// downloadAsset download artifact using http.Client
-func downloadAsset(asset AssetInfo) tea.Cmd {
+// downloadAsset downloads an asset via HTTP and returns a bubbletea message with the result.
+func downloadAsset(ctx context.Context, asset AssetInfo) tea.Cmd {
 	return func() tea.Msg {
 		config, err := loadConfig()
 		if err != nil {
 			return downloadErrorMsg(err.Error())
 		}
 
-		// Create HTTP client with context
-		client := &http.Client{}
-
-		// Create request with context
-		req, err := http.NewRequestWithContext(downloadContext, "GET", asset.URL, nil)
+		req, err := http.NewRequestWithContext(ctx, "GET", asset.URL, nil)
 		if err != nil {
 			return downloadErrorMsg(fmt.Sprintf("Error creating request: %v", err))
 		}
-
-		// Set headers
 		req.Header.Set("Accept", "application/octet-stream")
-		// Only add authorization header if token is provided
 		if config.GitHubToken != "" {
 			req.Header.Set("Authorization", "Bearer "+config.GitHubToken)
 		}
 		req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
 
-		// Execute request
-		resp, err := client.Do(req)
+		resp, err := http.DefaultClient.Do(req)
 		if err != nil {
-			// Check if the error is due to context cancellation
-			if errors.Is(downloadContext.Err(), context.Canceled) {
+			if errors.Is(ctx.Err(), context.Canceled) {
 				return downloadErrorMsg("Download cancelled by user")
 			}
 			return downloadErrorMsg(fmt.Sprintf("Error downloading file: %v", err))
 		}
-		defer func() {
-			if closeErr := resp.Body.Close(); closeErr != nil {
-				// Log the error but don't return it as it's in defer
-			}
-		}()
+		defer resp.Body.Close()
 
-		// Check response status
 		if resp.StatusCode != http.StatusOK {
 			return downloadErrorMsg(fmt.Sprintf("HTTP error: %d", resp.StatusCode))
 		}
 
-		// Create output file
 		out, err := os.Create(asset.Name)
 		if err != nil {
 			return downloadErrorMsg(fmt.Sprintf("Error creating file: %v", err))
 		}
-		defer func() {
-			if closeErr := out.Close(); closeErr != nil {
-				// Log the error but don't return it as it's in defer
-			}
-		}()
+		defer out.Close()
 
-		// Create a progress reader
 		progressReader := &ProgressReader{
 			reader: resp.Body,
 			total:  asset.Size,
 			onProgress: func(downloaded, total int64) {
-				// Update global progress variable
 				downloadProgressMutex.Lock()
 				downloadProgress = downloaded
 				downloadProgressMutex.Unlock()
 			},
 		}
 
-		// Copy response body to file
 		_, err = io.Copy(out, progressReader)
 		if err != nil {
-			// Check if the error is due to context cancellation
-			if errors.Is(downloadContext.Err(), context.Canceled) {
-				// Clean up partial file
-				if removeErr := os.Remove(asset.Name); removeErr != nil {
-					// Log the error but don't return it as we already have a cancellation error
-				}
+			if errors.Is(ctx.Err(), context.Canceled) {
+				os.Remove(asset.Name) //nolint:errcheck
 				return downloadErrorMsg("Download cancelled by user")
 			}
-			// Clean up partial file
-			if removeErr := os.Remove(asset.Name); removeErr != nil {
-				// Log the error but don't return it as we already have a write error
-			}
+			os.Remove(asset.Name) //nolint:errcheck
 			return downloadErrorMsg(fmt.Sprintf("Error writing file: %v", err))
 		}
 
-		// Verify checksum if digest is provided
 		if err := verifyChecksum(asset.Name, asset.Digest); err != nil {
-			// Clean up file with incorrect checksum
-			if removeErr := os.Remove(asset.Name); removeErr != nil {
-				// Log the error but don't return it as we already have a checksum error
-			}
+			os.Remove(asset.Name) //nolint:errcheck
 			return downloadErrorMsg(fmt.Sprintf("Checksum verification failed for %s: %v", asset.Name, err))
 		}
 
-		return checksumVerifiedMsg{
-			filename: asset.Name,
-			success:  true,
-			err:      "",
-		}
+		return checksumVerifiedMsg{filename: asset.Name, success: true}
 	}
 }
 

@@ -20,9 +20,8 @@ var (
 )
 
 func main() {
-	// Create context with cancel function
-	downloadContext, downloadCancel = context.WithCancel(context.Background())
-	defer downloadCancel()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
 	var repoOwner, repoName, tag string
 	var assetMask *string
@@ -56,7 +55,6 @@ func main() {
 		}
 	}
 
-	// Initialize unified model
 	m := model{
 		loading:           true,
 		state:             StateReleases,
@@ -65,17 +63,17 @@ func main() {
 		tag:               tag,
 		assetMask:         assetMask,
 		startWithReleases: startWithReleases,
+		downloadCtx:       ctx,
+		downloadCancel:    cancel,
 	}
 
-	// Run bubbletea
 	p := tea.NewProgram(m)
 	if _, err := p.Run(); err != nil {
 		fmt.Printf("Error: %v\n", err)
 		os.Exit(1)
 	}
 
-	// Check if context was cancelled
-	if errors.Is(downloadContext.Err(), context.Canceled) {
+	if errors.Is(ctx.Err(), context.Canceled) {
 		fmt.Println("Download cancelled by user")
 		os.Exit(0)
 	}

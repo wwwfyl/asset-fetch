@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"time"
@@ -40,6 +41,10 @@ type model struct {
 	tag               string
 	assetMask         *string
 	startWithReleases bool
+
+	// Download lifecycle (per-model, not global)
+	downloadCtx    context.Context
+	downloadCancel context.CancelFunc
 }
 
 // Init bubbletea initialization
@@ -54,9 +59,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 		case "ctrl+c", "q":
 			if m.downloading {
-				// Cancel download
-				if downloadCancel != nil {
-					downloadCancel()
+				if m.downloadCancel != nil {
+					m.downloadCancel()
 				}
 				return m, func() tea.Msg {
 					return cancelDownloadMsg{}
@@ -145,7 +149,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				func() tea.Msg {
 					return startDownloadProgressMsg{asset: *asset}
 				},
-				downloadAsset(*asset),
+				downloadAsset(m.downloadCtx, *asset),
 			)
 		} else {
 			// All downloads completed (with errors)
@@ -184,7 +188,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					func() tea.Msg {
 						return startDownloadProgressMsg{asset: *asset}
 					},
-					downloadAsset(*asset),
+					downloadAsset(m.downloadCtx, *asset),
 				)
 			} else {
 				// All downloads completed
@@ -349,7 +353,7 @@ func (m model) startDownload() (tea.Model, tea.Cmd) {
 				func() tea.Msg {
 					return startDownloadProgressMsg{asset: *asset}
 				},
-				downloadAsset(*asset),
+				downloadAsset(m.downloadCtx, *asset),
 			)
 		}
 	}

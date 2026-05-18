@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -57,6 +58,13 @@ type model struct {
 	tiles        []TileInfo
 	selectedTile int
 
+	// fromDashboard is set when releases/assets were opened from a dashboard
+	// tile, so `q` returns to the dashboard instead of quitting.
+	fromDashboard bool
+
+	// confirmUninstall toggles the "Uninstall <name>? [y/N]" overlay.
+	confirmUninstall bool
+
 	// Per-download progress shared between the download goroutine and the tick loop.
 	currentProgress *ProgressState
 }
@@ -88,6 +96,15 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.state = StateReleases
 				m.fromReleasesView = false
 				return m, nil
+			} else if m.fromDashboard && (m.state == StateReleases || m.state == StateAssets) {
+				// Go back to the dashboard.
+				m.state = StateDashboard
+				m.fromDashboard = false
+				m.fromReleasesView = false
+				return m, nil
+			} else if m.state == StateDashboard && m.confirmUninstall {
+				m.confirmUninstall = false
+				return m, nil
 			} else {
 				m.quitting = true
 				return m, tea.Quit
@@ -96,6 +113,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		// Handle state-specific navigation and actions
 		switch m.state {
+		case StateDashboard:
+			return m.handleDashboardInput(msg.String())
 		case StateReleases:
 			return m.handleReleasesInput(msg.String())
 		case StateAssets:
@@ -370,6 +389,75 @@ func (m model) startDownload() (tea.Model, tea.Cmd) {
 		}
 	}
 	return m, nil
+}
+
+// handleDashboardInput handles key input when the dashboard is the active state.
+// Update/uninstall actions defer real work to later commits; this only wires
+// the navigation, the confirm overlay and the transition into releases.
+func (m model) handleDashboardInput(key string) (tea.Model, tea.Cmd) {
+	if m.confirmUninstall {
+		switch key {
+		case "y", "Y":
+			m.confirmUninstall = false
+			// TODO commit 17: trigger uninstall.steps for the selected app.
+			return m, nil
+		case "n", "N", "esc":
+			m.confirmUninstall = false
+		}
+		return m, nil
+	}
+
+	n := len(m.tiles)
+	if n == 0 {
+		return m, nil
+	}
+
+	switch key {
+	case "tab", "right", "l":
+		m.selectedTile = (m.selectedTile + 1) % n
+	case "shift+tab", "left", "h":
+		m.selectedTile = (m.selectedTile - 1 + n) % n
+	case "enter":
+		return m.openAppReleases(m.selectedTile)
+	case "u":
+		// TODO commit 16: trigger the update flow for the selected app.
+	case "d":
+		if m.selectedTile >= 0 && m.selectedTile < len(m.apps) {
+			m.confirmUninstall = true
+		}
+	}
+	return m, nil
+}
+
+// openAppReleases switches the model to the releases/assets list for the app
+// at idx, reusing the existing fetchReleases pipeline. fromDashboard is set so
+// `q` later returns to the dashboard.
+func (m model) openAppReleases(idx int) (tea.Model, tea.Cmd) {
+	if idx < 0 || idx >= len(m.apps) {
+		return m, nil
+	}
+	app := m.apps[idx]
+	parts := strings.SplitN(app.Repo, "/", 2)
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+		m.errorMsg = "invalid repo: " + app.Repo
+		return m, nil
+	}
+	m.repoOwner = parts[0]
+	m.repoName = parts[1]
+	m.tag = ""
+	m.startWithReleases = false
+	if app.AssetMask != "" {
+		am := app.AssetMask
+		m.assetMask = &am
+	} else {
+		m.assetMask = nil
+	}
+	if app.GitHubToken != "" {
+		m.gitHubToken = app.GitHubToken
+	}
+	m.fromDashboard = true
+	m.loading = true
+	return m, fetchReleases(m)
 }
 
 // View interface display - unified version

@@ -22,10 +22,19 @@ func renderDashboard(m model) string {
 	}
 
 	grid := lipgloss.JoinHorizontal(lipgloss.Top, boxes...)
-	bar := dashboardBarStyle.Render("Tab/←/→ navigate · u update · d uninstall · Enter releases · q quit")
+	bar := dashboardBarStyle.Render(dashboardBarText(m))
 
 	header := dashboardHeaderStyle.Render("afetch")
 	return header + "\n\n" + grid + "\n" + bar + "\n"
+}
+
+// dashboardBarText returns the bottom hint line; the uninstall confirm prompt
+// replaces the default key hints while it is active.
+func dashboardBarText(m model) string {
+	if m.confirmUninstall && m.selectedTile >= 0 && m.selectedTile < len(m.tiles) {
+		return confirmPromptStyle.Render("Uninstall "+m.tiles[m.selectedTile].Name+"? [y/N]")
+	}
+	return "Tab/←/→ navigate · u update · d uninstall · Enter releases · q quit"
 }
 
 // renderTile renders one card. selected toggles the accent border.
@@ -112,4 +121,5 @@ var (
 
 	dashboardHeaderStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("231"))
 	dashboardBarStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("244")).PaddingTop(1)
+	confirmPromptStyle   = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("214"))
 )

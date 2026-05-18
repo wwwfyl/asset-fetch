@@ -80,10 +80,11 @@ func main() {
 	}
 
 	// Load the YAML multi-app config (auto-migrates legacy key=value files).
-	var gitHubToken, configErr string
+	var gitHubToken, globalToken, configErr string
 	var apps []AppConfig
 	if cfg, err := loadGlobalConfig(); err == nil {
-		gitHubToken = cfg.GitHubToken
+		globalToken = cfg.GitHubToken
+		gitHubToken = globalToken
 		apps = cfg.Apps
 		// Single-app mode: derive owner/repo/mask/token from the first app
 		// for the current StateReleases/StateAssets flow.
@@ -127,6 +128,7 @@ func main() {
 		downloadCtx:       ctx,
 		downloadCancel:    cancel,
 		gitHubToken:       gitHubToken,
+		globalToken:       globalToken,
 		downloadDir:       downloadDir,
 		errorMsg:          configErr,
 		apps:              apps,

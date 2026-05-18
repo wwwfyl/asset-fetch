@@ -48,7 +48,8 @@ type model struct {
 	downloadCancel context.CancelFunc
 
 	// Injected from config at startup
-	gitHubToken string
+	gitHubToken string // effective token for the current single-app session
+	globalToken string // top-level github_token from the YAML config, used as the per-app fallback
 	downloadDir string // directory where assets are saved; defaults to cwd
 
 	// All apps from the YAML config; consumed by the dashboard.
@@ -73,6 +74,9 @@ type model struct {
 func (m model) Init() tea.Cmd {
 	if m.errorMsg != "" {
 		return nil
+	}
+	if m.state == StateDashboard {
+		return initDashboardTiles(m)
 	}
 	return fetchReleases(m)
 }
@@ -146,6 +150,19 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case errorMsg:
 		m.errorMsg = string(msg)
 		m.loading = false
+
+	case tileUpdatedMsg:
+		if msg.index >= 0 && msg.index < len(m.tiles) {
+			t := &m.tiles[msg.index]
+			if msg.err != "" {
+				t.Status = TileStatusError
+				t.Err = msg.err
+			} else {
+				t.LatestVersion = msg.latestVersion
+				t.InstalledVersion = msg.installedVersion
+				t.Status = TileStatusReady
+			}
+		}
 
 	case startDownloadProgressMsg:
 		// Start download progress updates
@@ -454,6 +471,8 @@ func (m model) openAppReleases(idx int) (tea.Model, tea.Cmd) {
 	}
 	if app.GitHubToken != "" {
 		m.gitHubToken = app.GitHubToken
+	} else {
+		m.gitHubToken = m.globalToken
 	}
 	m.fromDashboard = true
 	m.loading = true

@@ -95,9 +95,10 @@ type Asset struct {
 
 // Release structure for storing release information
 type Release struct {
-	TagName string  `json:"tag_name"`
-	Name    string  `json:"name"`
-	Assets  []Asset `json:"assets"`
+	TagName    string  `json:"tag_name"`
+	Name       string  `json:"name"`
+	Prerelease bool    `json:"prerelease"`
+	Assets     []Asset `json:"assets"`
 }
 
 // AssetInfo structure for storing artifact information
@@ -270,4 +271,12 @@ type startDownloadProgressMsg struct {
 // updateDownloadProgressMsg message to update download progress
 type updateDownloadProgressMsg struct {
 	asset AssetInfo
+}
+
+// tileUpdatedMsg is emitted by background fetches to update one dashboard tile.
+type tileUpdatedMsg struct {
+	index            int
+	latestVersion    string
+	installedVersion string
+	err              string
 }

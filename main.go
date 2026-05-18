@@ -79,53 +79,45 @@ func main() {
 		}
 	}
 
+	urlMode := repoOwner != "" && repoName != ""
+
 	// Load the YAML multi-app config (auto-migrates legacy key=value files).
-	var gitHubToken, globalToken, configErr string
+	var globalToken, configErr string
 	var apps []AppConfig
 	if cfg, err := loadGlobalConfig(); err == nil {
 		globalToken = cfg.GitHubToken
-		gitHubToken = globalToken
 		apps = cfg.Apps
-		// Single-app mode: derive owner/repo/mask/token from the first app
-		// for the current StateReleases/StateAssets flow.
-		if len(apps) > 0 {
-			app := apps[0]
-			if app.GitHubToken != "" {
-				gitHubToken = app.GitHubToken
-			}
-			if repoOwner == "" || repoName == "" {
-				if parts := strings.SplitN(app.Repo, "/", 2); len(parts) == 2 {
-					if repoOwner == "" {
-						repoOwner = parts[0]
-					}
-					if repoName == "" {
-						repoName = parts[1]
-					}
-				}
-			}
-			if assetMask == nil && app.AssetMask != "" {
-				assetMask = &app.AssetMask
-			}
-		}
-		log.Printf("loadGlobalConfig ok: apps=%d tokenSet=%v", len(apps), gitHubToken != "")
-	} else if repoOwner == "" || repoName == "" {
+		log.Printf("loadGlobalConfig ok: apps=%d tokenSet=%v", len(apps), globalToken != "")
+	} else if !urlMode {
 		configErr = err.Error()
 		log.Printf("loadGlobalConfig failed and no URL: %v", err)
 	} else {
 		log.Printf("loadGlobalConfig failed but URL provided, continuing: %v", err)
 	}
 
-	// URL mode: prefer the matching app's per-app token over the chosen
-	// single-app one, so users can keep one token per repo in the config.
-	if repoOwner != "" && repoName != "" {
+	// URL mode keeps the single-target flow and prefers the matching app's
+	// token; everything else starts on the dashboard with one tile per app.
+	gitHubToken := globalToken
+	startState := StateReleases
+	var tiles []TileInfo
+	loading := false
+	switch {
+	case configErr != "":
+		// View() will surface the error; no need to fetch anything.
+	case urlMode:
 		gitHubToken = tokenForRepo(repoOwner, repoName, apps, globalToken)
+		loading = true
+	default:
+		startState = StateDashboard
+		tiles = makeTiles(apps)
 	}
+
 	downloadDir, _ := os.Getwd()
-	log.Printf("model init: owner=%q repo=%q tag=%q assetMaskSet=%v downloadDir=%q errorMsg=%q", repoOwner, repoName, tag, assetMask != nil, downloadDir, configErr)
+	log.Printf("model init: urlMode=%v startState=%v apps=%d errorMsg=%q", urlMode, startState, len(apps), configErr)
 
 	m := model{
-		loading:           configErr == "",
-		state:             StateReleases,
+		loading:           loading,
+		state:             startState,
 		repoOwner:         repoOwner,
 		repoName:          repoName,
 		tag:               tag,
@@ -138,6 +130,7 @@ func main() {
 		downloadDir:       downloadDir,
 		errorMsg:          configErr,
 		apps:              apps,
+		tiles:             tiles,
 	}
 
 	p := tea.NewProgram(m)

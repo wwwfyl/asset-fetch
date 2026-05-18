@@ -17,10 +17,10 @@ func TestSelectRelease(t *testing.T) {
 		releaseType string
 		want        string
 	}{
-		{"", "v1.0.0-rc1"},
-		{"latest", "v1.0.0-rc1"},
-		{"latest-stable", "v0.9.0"},
-		{"pre-release", "v1.0.0-rc1"},
+		{"", "1.0.0-rc1"},
+		{"latest", "1.0.0-rc1"},
+		{"latest-stable", "0.9.0"},
+		{"pre-release", "1.0.0-rc1"},
 	}
 	for _, c := range cases {
 		t.Run(c.releaseType, func(t *testing.T) {

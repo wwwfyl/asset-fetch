@@ -54,13 +54,14 @@ func fetchTileData(ctx context.Context, idx int, app AppConfig, globalToken stri
 	}
 }
 
-// selectRelease returns the tag of the release matching release_type, or ""
-// if no release matches. Thin wrapper over pickRelease that swallows the error
-// (the dashboard tile fetch treats "no release" as the natural unknown state).
+// selectRelease returns the normalized tag of the release matching release_type,
+// or "" if no release matches. Thin wrapper over pickRelease that swallows the
+// error and drops the conventional "v" prefix so the tile compares cleanly with
+// the bare version produced by version.command.
 func selectRelease(releases []Release, releaseType string) string {
 	r, err := pickRelease(releases, releaseType)
 	if err != nil {
 		return ""
 	}
-	return r.TagName
+	return normalizeVersion(r.TagName)
 }

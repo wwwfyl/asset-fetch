@@ -102,7 +102,7 @@ func doUpdate(ctx context.Context, app AppConfig, globalToken string) error {
 		"ASSET_FILE":  filepath.Join(workDir, asset.Name),
 		"WORK_DIR":    workDir,
 		"INSTALL_DIR": installDir,
-		"VERSION":     release.TagName,
+		"VERSION":     normalizeVersion(release.TagName),
 	}
 
 	log.Printf("update[%s]: running %d unpack step(s)", app.Name, len(app.Install.Unpack))

@@ -58,30 +58,13 @@ func fetchTileData(ctx context.Context, idx int, app AppConfig, globalToken stri
 	}
 }
 
-// selectRelease picks the release tag matching the requested release_type.
-// "latest" (or empty) returns the first release in the API response (most
-// recent by date), "latest-stable" returns the first non-prerelease, and
-// "pre-release" returns the first prerelease. Returns "" if no release fits.
+// selectRelease returns the tag of the release matching release_type, or ""
+// if no release matches. Thin wrapper over pickRelease that swallows the error
+// (the dashboard tile fetch treats "no release" as the natural unknown state).
 func selectRelease(releases []Release, releaseType string) string {
-	if len(releases) == 0 {
+	r, err := pickRelease(releases, releaseType)
+	if err != nil {
 		return ""
 	}
-	switch releaseType {
-	case "latest-stable":
-		for _, r := range releases {
-			if !r.Prerelease {
-				return r.TagName
-			}
-		}
-		return ""
-	case "pre-release":
-		for _, r := range releases {
-			if r.Prerelease {
-				return r.TagName
-			}
-		}
-		return ""
-	default:
-		return releases[0].TagName
-	}
+	return r.TagName
 }

@@ -280,3 +280,11 @@ type tileUpdatedMsg struct {
 	installedVersion string
 	err              string
 }
+
+// updateCompleteMsg signals that the update pipeline finished for one tile.
+type updateCompleteMsg struct {
+	index        int
+	succeeded    bool
+	newInstalled string
+	err          string
+}

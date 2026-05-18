@@ -164,6 +164,19 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 
+	case updateCompleteMsg:
+		if msg.index >= 0 && msg.index < len(m.tiles) {
+			t := &m.tiles[msg.index]
+			if msg.err != "" {
+				t.Status = TileStatusError
+				t.Err = msg.err
+			} else {
+				t.Status = TileStatusReady
+				t.InstalledVersion = msg.newInstalled
+				t.Err = ""
+			}
+		}
+
 	case startDownloadProgressMsg:
 		// Start download progress updates
 		m.downloading = true
@@ -437,7 +450,15 @@ func (m model) handleDashboardInput(key string) (tea.Model, tea.Cmd) {
 	case "enter":
 		return m.openAppReleases(m.selectedTile)
 	case "u":
-		// TODO commit 16: trigger the update flow for the selected app.
+		if m.selectedTile >= 0 && m.selectedTile < len(m.tiles) && m.selectedTile < len(m.apps) {
+			t := &m.tiles[m.selectedTile]
+			if t.Status == TileStatusUpdating || t.Status == TileStatusUninstalling {
+				return m, nil
+			}
+			t.Status = TileStatusUpdating
+			t.Err = ""
+			return m, startAppUpdate(m.downloadCtx, m.selectedTile, m.apps[m.selectedTile], m.globalToken)
+		}
 	case "d":
 		if m.selectedTile >= 0 && m.selectedTile < len(m.apps) {
 			m.confirmUninstall = true

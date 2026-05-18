@@ -56,3 +56,21 @@ func envSlice(m map[string]string) []string {
 	}
 	return s
 }
+
+// expandHome replaces a leading "~/" or a bare "~" in p with the user's
+// home directory. yaml.v3 does not expand the tilde, and neither does sh
+// when the tilde is inside a parameter expansion, so we resolve it here.
+func expandHome(p string) string {
+	if p == "~" {
+		if home, err := os.UserHomeDir(); err == nil {
+			return home
+		}
+		return p
+	}
+	if strings.HasPrefix(p, "~/") {
+		if home, err := os.UserHomeDir(); err == nil {
+			return filepath.Join(home, p[2:])
+		}
+	}
+	return p
+}

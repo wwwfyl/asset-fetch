@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -16,9 +17,15 @@ import (
 func runSteps(steps []InstallStep, env map[string]string) error {
 	workDir := env["WORK_DIR"]
 	for i, step := range steps {
+		label := step.Name
+		if label == "" {
+			label = fmt.Sprintf("step %d", i+1)
+		}
 		if strings.TrimSpace(step.Run) == "" {
+			log.Printf("step[%s]: skipped (empty run)", label)
 			continue
 		}
+		log.Printf("step[%s]: running: %s", label, step.Run)
 		cmd := exec.Command("sh", "-c", step.Run)
 		if workDir != "" {
 			cmd.Dir = workDir
@@ -26,12 +33,10 @@ func runSteps(steps []InstallStep, env map[string]string) error {
 		cmd.Env = append(os.Environ(), envSlice(env)...)
 		out, err := cmd.CombinedOutput()
 		if err != nil {
-			label := step.Name
-			if label == "" {
-				label = fmt.Sprintf("step %d", i+1)
-			}
+			log.Printf("step[%s]: failed: %v: %s", label, err, strings.TrimSpace(string(out)))
 			return fmt.Errorf("%s: %w: %s", label, err, strings.TrimSpace(string(out)))
 		}
+		log.Printf("step[%s]: ok", label)
 	}
 	return nil
 }

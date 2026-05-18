@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"log"
 
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -27,7 +28,9 @@ func startAppUninstall(idx int, app AppConfig) tea.Cmd {
 // previously-installed $VERSION exposed. $ASSET_FILE and $WORK_DIR are not
 // available — uninstall is purely a cleanup phase.
 func doUninstall(app AppConfig) error {
+	log.Printf("uninstall[%s]: starting", app.Name)
 	if len(app.Uninstall.Steps) == 0 {
+		log.Printf("uninstall[%s]: no steps configured", app.Name)
 		return fmt.Errorf("no uninstall steps configured")
 	}
 	installDir := app.InstallDir
@@ -36,9 +39,17 @@ func doUninstall(app AppConfig) error {
 	}
 	installDir = expandHome(installDir)
 
+	version := getInstalledVersion(app.Version)
+	log.Printf("uninstall[%s]: install_dir=%s version=%q running %d step(s)", app.Name, installDir, version, len(app.Uninstall.Steps))
+
 	env := map[string]string{
 		"INSTALL_DIR": installDir,
-		"VERSION":     getInstalledVersion(app.Version),
+		"VERSION":     version,
 	}
-	return runSteps(app.Uninstall.Steps, env)
+	if err := runSteps(app.Uninstall.Steps, env); err != nil {
+		log.Printf("uninstall[%s]: failed: %v", app.Name, err)
+		return err
+	}
+	log.Printf("uninstall[%s]: done", app.Name)
+	return nil
 }

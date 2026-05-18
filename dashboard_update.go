@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"log"
 	"os"
 	"path"
 	"path/filepath"
@@ -31,6 +32,8 @@ func startAppUpdate(ctx context.Context, idx int, app AppConfig, globalToken str
 // matching asset into a temp directory, then runs install.unpack and
 // install.steps with $ASSET_FILE/$WORK_DIR/$INSTALL_DIR/$VERSION set.
 func doUpdate(ctx context.Context, app AppConfig, globalToken string) error {
+	log.Printf("update[%s]: starting, repo=%s release_type=%q asset_mask=%q", app.Name, app.Repo, app.ReleaseType, app.AssetMask)
+
 	parts := strings.SplitN(app.Repo, "/", 2)
 	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
 		return fmt.Errorf("invalid repo: %s", app.Repo)
@@ -40,35 +43,49 @@ func doUpdate(ctx context.Context, app AppConfig, globalToken string) error {
 	}
 
 	token := tokenForApp(app, globalToken)
+	log.Printf("update[%s]: tokenSet=%v (per-app=%v)", app.Name, token != "", app.GitHubToken != "")
 
 	releases, err := fetchReleasesFromGitHub(ctx, parts[0], parts[1], "", token)
 	if err != nil {
+		log.Printf("update[%s]: fetch releases failed: %v", app.Name, err)
 		return err
 	}
+	log.Printf("update[%s]: fetched %d releases", app.Name, len(releases))
+
 	release, err := pickRelease(releases, app.ReleaseType)
 	if err != nil {
+		log.Printf("update[%s]: pickRelease failed: %v", app.Name, err)
 		return err
 	}
+	log.Printf("update[%s]: picked release %s (prerelease=%v)", app.Name, release.TagName, release.Prerelease)
+
 	asset, err := pickAsset(release.Assets, app.AssetMask)
 	if err != nil {
+		log.Printf("update[%s]: pickAsset failed: %v", app.Name, err)
 		return err
 	}
+	log.Printf("update[%s]: matched asset %s (size=%d)", app.Name, asset.Name, asset.Size)
 
 	workDir, err := os.MkdirTemp("", "afetch-update-")
 	if err != nil {
 		return fmt.Errorf("create work dir: %w", err)
 	}
 	defer os.RemoveAll(workDir)
+	log.Printf("update[%s]: work dir %s", app.Name, workDir)
 
 	formatter := AssetFormatter{}
 	assetInfo := formatter.FormatAssetInfo(*asset, *release)
+	log.Printf("update[%s]: downloading…", app.Name)
 	switch m := downloadAsset(ctx, assetInfo, token, workDir, &ProgressState{})().(type) {
 	case downloadErrorMsg:
+		log.Printf("update[%s]: download failed: %s", app.Name, string(m))
 		return fmt.Errorf("download: %s", string(m))
 	case checksumVerifiedMsg:
 		if !m.success {
+			log.Printf("update[%s]: checksum failed: %s", app.Name, m.err)
 			return fmt.Errorf("download: %s", m.err)
 		}
+		log.Printf("update[%s]: downloaded to %s", app.Name, m.filename)
 	}
 
 	installDir := app.InstallDir
@@ -79,6 +96,7 @@ func doUpdate(ctx context.Context, app AppConfig, globalToken string) error {
 	if err := os.MkdirAll(installDir, 0755); err != nil {
 		return fmt.Errorf("create install dir %s: %w", installDir, err)
 	}
+	log.Printf("update[%s]: install_dir=%s", app.Name, installDir)
 
 	env := map[string]string{
 		"ASSET_FILE":  filepath.Join(workDir, asset.Name),
@@ -87,12 +105,15 @@ func doUpdate(ctx context.Context, app AppConfig, globalToken string) error {
 		"VERSION":     release.TagName,
 	}
 
+	log.Printf("update[%s]: running %d unpack step(s)", app.Name, len(app.Install.Unpack))
 	if err := runSteps(app.Install.Unpack, env); err != nil {
 		return fmt.Errorf("unpack: %w", err)
 	}
+	log.Printf("update[%s]: running %d install step(s)", app.Name, len(app.Install.Steps))
 	if err := runSteps(app.Install.Steps, env); err != nil {
 		return fmt.Errorf("install: %w", err)
 	}
+	log.Printf("update[%s]: done", app.Name)
 	return nil
 }
 

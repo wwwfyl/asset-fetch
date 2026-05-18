@@ -288,3 +288,11 @@ type updateCompleteMsg struct {
 	newInstalled string
 	err          string
 }
+
+// uninstallCompleteMsg signals that the uninstall pipeline finished for one tile.
+type uninstallCompleteMsg struct {
+	index        int
+	succeeded    bool
+	newInstalled string
+	err          string
+}

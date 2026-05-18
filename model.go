@@ -63,6 +63,9 @@ type model struct {
 
 // Init bubbletea initialization
 func (m model) Init() tea.Cmd {
+	if m.errorMsg != "" {
+		return nil
+	}
 	return fetchReleases(m)
 }
 

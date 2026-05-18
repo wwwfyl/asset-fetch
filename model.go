@@ -50,8 +50,12 @@ type model struct {
 	gitHubToken string
 	downloadDir string // directory where assets are saved; defaults to cwd
 
-	// All apps from the YAML config; consumed by the dashboard (later commits).
+	// All apps from the YAML config; consumed by the dashboard.
 	apps []AppConfig
+
+	// Dashboard state: one tile per app, plus the focused index.
+	tiles        []TileInfo
+	selectedTile int
 
 	// Per-download progress shared between the download goroutine and the tick loop.
 	currentProgress *ProgressState

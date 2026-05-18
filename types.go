@@ -216,11 +216,32 @@ func (dq *DownloadQueue) Reset() {
 type ViewState int
 
 const (
-	StateReleases ViewState = iota
+	StateDashboard ViewState = iota
+	StateReleases
 	StateAssets
 	StateDownloading
 	StateFinished
 )
+
+// TileStatus tracks the per-app card lifecycle on the dashboard.
+type TileStatus int
+
+const (
+	TileStatusLoading TileStatus = iota
+	TileStatusReady
+	TileStatusError
+	TileStatusUpdating
+	TileStatusUninstalling
+)
+
+// TileInfo is the rendered state of one dashboard card.
+type TileInfo struct {
+	Name             string
+	LatestVersion    string
+	InstalledVersion string
+	Status           TileStatus
+	Err              string
+}
 
 // Custom messages
 type errorMsg string

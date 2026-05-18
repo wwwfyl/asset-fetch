@@ -114,6 +114,12 @@ func main() {
 	} else {
 		log.Printf("loadGlobalConfig failed but URL provided, continuing: %v", err)
 	}
+
+	// URL mode: prefer the matching app's per-app token over the chosen
+	// single-app one, so users can keep one token per repo in the config.
+	if repoOwner != "" && repoName != "" {
+		gitHubToken = tokenForRepo(repoOwner, repoName, apps, globalToken)
+	}
 	downloadDir, _ := os.Getwd()
 	log.Printf("model init: owner=%q repo=%q tag=%q assetMaskSet=%v downloadDir=%q errorMsg=%q", repoOwner, repoName, tag, assetMask != nil, downloadDir, configErr)
 

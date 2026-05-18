@@ -44,11 +44,7 @@ func fetchTileData(ctx context.Context, idx int, app AppConfig, globalToken stri
 			msg.err = "invalid repo: " + app.Repo
 			return msg
 		}
-		token := app.GitHubToken
-		if token == "" {
-			token = globalToken
-		}
-		releases, err := fetchReleasesFromGitHub(ctx, parts[0], parts[1], "", token)
+		releases, err := fetchReleasesFromGitHub(ctx, parts[0], parts[1], "", tokenForApp(app, globalToken))
 		if err != nil {
 			msg.err = err.Error()
 			return msg

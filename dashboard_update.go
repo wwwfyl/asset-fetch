@@ -39,10 +39,7 @@ func doUpdate(ctx context.Context, app AppConfig, globalToken string) error {
 		return fmt.Errorf("asset_mask is required for the update flow")
 	}
 
-	token := app.GitHubToken
-	if token == "" {
-		token = globalToken
-	}
+	token := tokenForApp(app, globalToken)
 
 	releases, err := fetchReleasesFromGitHub(ctx, parts[0], parts[1], "", token)
 	if err != nil {

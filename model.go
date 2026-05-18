@@ -511,11 +511,7 @@ func (m model) openAppReleases(idx int) (tea.Model, tea.Cmd) {
 	} else {
 		m.assetMask = nil
 	}
-	if app.GitHubToken != "" {
-		m.gitHubToken = app.GitHubToken
-	} else {
-		m.gitHubToken = m.globalToken
-	}
+	m.gitHubToken = tokenForApp(app, m.globalToken)
 	m.fromDashboard = true
 	m.loading = true
 	return m, fetchReleases(m)

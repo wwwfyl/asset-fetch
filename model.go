@@ -386,6 +386,8 @@ func (m model) View() string {
 	}
 
 	switch m.state {
+	case StateDashboard:
+		return renderDashboard(m)
 	case StateReleases, StateAssets:
 		return m.listView.Render()
 	case StateDownloading:

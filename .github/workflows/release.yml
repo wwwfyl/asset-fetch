@@ -5,6 +5,11 @@ permissions:
 on:
   # Allow manual triggering of the workflow
   workflow_dispatch:
+    inputs:
+      custom_tag:
+        description: 'Custom version (without v prefix, e.g. 1.2.3). Leave empty for automatic bump.'
+        required: false
+        type: string
 
 defaults:
   run:
@@ -32,6 +37,7 @@ jobs:
           create_annotated_tag: false
           fetch_all_tags: false
           dry_run: false
+          custom_tag: ${{ inputs.custom_tag }}
 
       - name: Fetch tags after creation
         run: |

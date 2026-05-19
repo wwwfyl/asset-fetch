@@ -33,10 +33,10 @@ go build -o afetch
 
 ```bash
 # Latest release of a repository
-./afetch https://github.com/charmbracelet/bubbletea/releases
+./afetch https://github.com/wwwfyl/asset-fetch/releases
 
 # A specific release tag
-./afetch https://github.com/charmbracelet/bubbletea/releases/tag/v0.25.0
+./afetch https://github.com/wwwfyl/asset-fetch/releases/tag/v0.1.0
 ```
 
 ### 2. Set up the dashboard
@@ -47,24 +47,24 @@ Create an `afetch.yaml` (see [Configuration](#configuration) for paths) describi
 github_token: ""
 
 apps:
-  - name: lazygit
-    repo: jesseduffield/lazygit
+  - name: afetch
+    repo: wwwfyl/asset-fetch
     release_type: latest
     asset_mask: "*linux_x86_64.tar.gz"
     install_dir: ~/bin
     version:
-      command: lazygit --version
-      regex: 'version=([0-9.]+)'
+      command: afetch --version
+      regex: 'afetch version (\S+)'
     install:
       unpack:
         - run: tar xzf $ASSET_FILE -C $WORK_DIR
       steps:
         - name: Move binary
-          run: mv $WORK_DIR/lazygit $INSTALL_DIR/lazygit
+          run: mv $WORK_DIR/afetch $INSTALL_DIR/afetch
     uninstall:
       steps:
         - name: Remove binary
-          run: rm -f $INSTALL_DIR/lazygit
+          run: rm -f $INSTALL_DIR/afetch
 ```
 
 Run `./afetch` with no arguments to open the dashboard.
@@ -134,8 +134,8 @@ The first file found wins. Legacy `afetch.conf` files (the pre-YAML key=value fo
 
 ```yaml
 version:
-  command: lazygit --version
-  regex: 'version=([0-9.]+)'
+  command: afetch --version
+  regex: 'afetch version (\S+)'
 ```
 
 `command` is run; the first capture group of `regex` becomes the installed version compared against the GitHub release tag (with a leading `v` stripped).

@@ -88,7 +88,7 @@ func downloadAsset(ctx context.Context, asset AssetInfo, token, destDir string, 
 func fetchReleases(m model) tea.Cmd {
 	return func() tea.Msg {
 		if m.repoOwner == "" || m.repoName == "" {
-			return errorMsg("REPO_OWNER and REPO_NAME are required")
+			return errorMsg("missing repo: pass a GitHub releases URL or run from the dashboard")
 		}
 
 		releases, err := fetchReleasesFromGitHub(m.downloadCtx, m.repoOwner, m.repoName, m.tag, m.gitHubToken)

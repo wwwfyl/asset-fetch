@@ -96,17 +96,37 @@ func main() {
 	}
 
 	// URL mode keeps the single-target flow and prefers the matching app's
-	// token; everything else starts on the dashboard with one tile per app.
+	// token. A YAML config with a single app that has asset_mask set behaves
+	// like the legacy single-app flow — jump straight to filtered assets,
+	// skipping the dashboard. Everything else starts on the dashboard with
+	// one tile per app.
 	gitHubToken := globalToken
 	startState := StateReleases
 	var tiles []TileInfo
 	loading := false
+	singleFilterApp := len(apps) == 1 && apps[0].AssetMask != ""
 	switch {
 	case configErr != "":
 		// View() will surface the error; no need to fetch anything.
 	case urlMode:
 		gitHubToken = tokenForRepo(repoOwner, repoName, apps, globalToken)
 		loading = true
+	case singleFilterApp:
+		app := apps[0]
+		parts := strings.SplitN(app.Repo, "/", 2)
+		if len(parts) == 2 && parts[0] != "" && parts[1] != "" {
+			repoOwner = parts[0]
+			repoName = parts[1]
+			am := app.AssetMask
+			assetMask = &am
+			startWithReleases = false
+			gitHubToken = tokenForApp(app, globalToken)
+			loading = true
+		} else {
+			// Malformed repo falls back to the dashboard so the user can fix it.
+			startState = StateDashboard
+			tiles = makeTiles(apps)
+		}
 	default:
 		startState = StateDashboard
 		tiles = makeTiles(apps)

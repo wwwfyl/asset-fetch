@@ -123,8 +123,8 @@ The first file found wins. Legacy `afetch.conf` files (the pre-YAML key=value fo
 | `name`         | Display name shown on the dashboard tile.                                            |
 | `repo`         | `owner/repo` on GitHub.                                                              |
 | `release_type` | `latest` (default), `latest-stable` (skip prereleases), or `pre-release`.            |
-| `asset_mask`   | Glob matched against asset filenames (e.g. `*windows_x86_64.zip`).                   |
-| `install_dir`  | Destination directory; set explicitly to override the default `~/bin`.               |
+| `asset_mask`   | Asset filename glob (e.g. `*windows_x86_64.zip`). Required for `u` (update).         |
+| `install_dir`  | Destination directory. Defaults to `/usr/local/bin` for root, `$HOME/bin` otherwise. |
 | `github_token` | Per-app override of the top-level token.                                             |
 | `version`      | How to detect the locally installed version (see below).                             |
 | `install`      | `unpack` and `steps` lists run during install/update.                                |

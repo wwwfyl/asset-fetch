@@ -85,6 +85,8 @@ Run `./afetch` without arguments. Each tile shows the app name, latest GitHub ve
 | `Enter`           | Open the GitHub releases list for the focused tile    |
 | `q` / `Ctrl+C`    | Quit                                                  |
 
+`Shift+Tab`, `h`, and `l` are also accepted as navigation aliases.
+
 ### Releases and assets views
 
 Reached either via `Enter` from the dashboard or by passing a URL on the command line.

@@ -109,6 +109,8 @@ Reached either via `Enter` from the dashboard or by passing a URL on the command
 
 The first file found wins. Legacy `afetch.conf` files (the pre-YAML key=value format) are auto-migrated to `afetch.yaml` on first run; the original is preserved as `<path>.bak`.
 
+If the config has exactly one app and that app has `asset_mask` set, `afetch` skips the dashboard and jumps straight to a flat list of assets matching the mask across all releases of that app — the legacy single-app browse flow. Add a second app (or leave `asset_mask` empty) to get the dashboard back.
+
 ### Top-level fields
 
 | Field          | Description                                                                          |

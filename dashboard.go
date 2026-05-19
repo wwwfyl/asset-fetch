@@ -6,11 +6,16 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-// tileWidth is the inner width of one dashboard card (excluding border).
-const tileWidth = 24
+// tileWidth is the inner content width of one dashboard card (Width set on the
+// lipgloss style, excluding border but already including the horizontal padding
+// that the style applies). tileOuterWidth adds the two-rune rounded border.
+const (
+	tileWidth      = 24
+	tileOuterWidth = tileWidth + 2
+)
 
 // renderDashboard returns the multi-app dashboard view, laying out one card
-// per app side by side and a key-hint bar at the bottom.
+// per app and wrapping rows to fit the current terminal width.
 func renderDashboard(m model) string {
 	if len(m.tiles) == 0 {
 		return "No apps configured.\n"
@@ -21,7 +26,26 @@ func renderDashboard(m model) string {
 		boxes[i] = renderTile(t, i == m.selectedTile)
 	}
 
-	grid := lipgloss.JoinHorizontal(lipgloss.Top, boxes...)
+	cols := len(boxes)
+	if m.width > 0 {
+		cols = m.width / tileOuterWidth
+		if cols < 1 {
+			cols = 1
+		}
+		if cols > len(boxes) {
+			cols = len(boxes)
+		}
+	}
+
+	rows := make([]string, 0, (len(boxes)+cols-1)/cols)
+	for i := 0; i < len(boxes); i += cols {
+		end := i + cols
+		if end > len(boxes) {
+			end = len(boxes)
+		}
+		rows = append(rows, lipgloss.JoinHorizontal(lipgloss.Top, boxes[i:end]...))
+	}
+	grid := lipgloss.JoinVertical(lipgloss.Left, rows...)
 	bar := dashboardBarStyle.Render(dashboardBarText(m))
 
 	header := dashboardHeaderStyle.Render("afetch")

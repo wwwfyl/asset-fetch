@@ -68,6 +68,9 @@ type model struct {
 
 	// Per-download progress shared between the download goroutine and the tick loop.
 	currentProgress *ProgressState
+
+	// Last known terminal width from tea.WindowSizeMsg; 0 until the first resize.
+	width int
 }
 
 // Init bubbletea initialization
@@ -84,6 +87,9 @@ func (m model) Init() tea.Cmd {
 // Update bubbletea message processing - unified version
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		m.width = msg.Width
+		return m, nil
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "ctrl+c", "q":

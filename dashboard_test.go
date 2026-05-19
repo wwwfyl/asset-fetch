@@ -3,6 +3,8 @@ package main
 import (
 	"strings"
 	"testing"
+
+	tea "github.com/charmbracelet/bubbletea"
 )
 
 func TestRenderDashboardEmpty(t *testing.T) {
@@ -167,6 +169,55 @@ func TestRenderDashboardConfirmOverlay(t *testing.T) {
 	}
 	if strings.Contains(got, "Tab/←/→") {
 		t.Error("confirm prompt should replace the key-hint bar")
+	}
+}
+
+// countTileRows counts grid rows by looking for the rounded top-left corner.
+// A single grid row produces one line containing one or more "╭" characters;
+// vertically stacked rows each contribute a separate "╭"-bearing line.
+func countTileRows(rendered string) int {
+	rows := 0
+	for _, line := range strings.Split(rendered, "\n") {
+		if strings.Contains(line, "╭") {
+			rows++
+		}
+	}
+	return rows
+}
+
+func TestRenderDashboardWrapsToWidth(t *testing.T) {
+	cases := []struct {
+		name     string
+		width    int
+		numTiles int
+		wantRows int
+	}{
+		{"zero width falls back to single row", 0, 3, 1},
+		{"wide terminal keeps single row", 200, 4, 1},
+		{"80 cols fits 3 of 4 tiles per row", 80, 4, 2},
+		{"50 cols fits 1 per row", 50, 4, 4},
+		{"narrower than one tile still renders one per row", 25, 2, 2},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			tiles := make([]TileInfo, c.numTiles)
+			for i := range tiles {
+				tiles[i] = TileInfo{Name: "x", Status: TileStatusReady}
+			}
+			m := model{tiles: tiles, width: c.width}
+			got := countTileRows(renderDashboard(m))
+			if got != c.wantRows {
+				t.Errorf("width=%d tiles=%d: rows=%d, want %d", c.width, c.numTiles, got, c.wantRows)
+			}
+		})
+	}
+}
+
+func TestUpdateCapturesWindowSize(t *testing.T) {
+	m := model{}
+	out, _ := m.Update(tea.WindowSizeMsg{Width: 123, Height: 40})
+	if got := out.(model).width; got != 123 {
+		t.Errorf("width = %d, want 123", got)
 	}
 }
 

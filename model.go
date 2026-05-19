@@ -441,8 +441,6 @@ func (m model) startDownload() (tea.Model, tea.Cmd) {
 }
 
 // handleDashboardInput handles key input when the dashboard is the active state.
-// Update/uninstall actions defer real work to later commits; this only wires
-// the navigation, the confirm overlay and the transition into releases.
 func (m model) handleDashboardInput(key string) (tea.Model, tea.Cmd) {
 	if m.confirmUninstall {
 		switch key {

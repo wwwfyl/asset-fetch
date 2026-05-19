@@ -49,19 +49,12 @@ func fetchTileData(ctx context.Context, idx int, app AppConfig, globalToken stri
 			msg.err = err.Error()
 			return msg
 		}
-		msg.latestVersion = selectRelease(releases, app.ReleaseType)
+		release, err := pickRelease(releases, app.ReleaseType)
+		if err != nil {
+			msg.err = err.Error()
+			return msg
+		}
+		msg.latestVersion = normalizeVersion(release.TagName)
 		return msg
 	}
-}
-
-// selectRelease returns the normalized tag of the release matching release_type,
-// or "" if no release matches. Thin wrapper over pickRelease that swallows the
-// error and drops the conventional "v" prefix so the tile compares cleanly with
-// the bare version produced by version.command.
-func selectRelease(releases []Release, releaseType string) string {
-	r, err := pickRelease(releases, releaseType)
-	if err != nil {
-		return ""
-	}
-	return normalizeVersion(r.TagName)
 }

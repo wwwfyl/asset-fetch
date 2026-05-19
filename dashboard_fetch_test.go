@@ -6,44 +6,6 @@ import (
 	"testing"
 )
 
-func TestSelectRelease(t *testing.T) {
-	all := []Release{
-		{TagName: "v1.0.0-rc1", Prerelease: true},
-		{TagName: "v0.9.0", Prerelease: false},
-		{TagName: "v0.9.0-rc1", Prerelease: true},
-		{TagName: "v0.8.0", Prerelease: false},
-	}
-	cases := []struct {
-		releaseType string
-		want        string
-	}{
-		{"", "1.0.0-rc1"},
-		{"latest", "1.0.0-rc1"},
-		{"latest-stable", "0.9.0"},
-		{"pre-release", "1.0.0-rc1"},
-	}
-	for _, c := range cases {
-		t.Run(c.releaseType, func(t *testing.T) {
-			if got := selectRelease(all, c.releaseType); got != c.want {
-				t.Errorf("got %q, want %q", got, c.want)
-			}
-		})
-	}
-}
-
-func TestSelectReleaseEmptyInputs(t *testing.T) {
-	if got := selectRelease(nil, "latest"); got != "" {
-		t.Errorf("empty list should return empty string, got %q", got)
-	}
-	only := []Release{{TagName: "v1.0.0-rc1", Prerelease: true}}
-	if got := selectRelease(only, "latest-stable"); got != "" {
-		t.Errorf("no stable in list should return empty, got %q", got)
-	}
-	if got := selectRelease([]Release{{TagName: "v1.0", Prerelease: false}}, "pre-release"); got != "" {
-		t.Errorf("no prerelease in list should return empty, got %q", got)
-	}
-}
-
 func TestMakeTiles(t *testing.T) {
 	apps := []AppConfig{
 		{Name: "lazygit"},

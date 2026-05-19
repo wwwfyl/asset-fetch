@@ -65,7 +65,7 @@ func main() {
 				if len(pathParts) >= 2 {
 					repoOwner = pathParts[0]
 					repoName = pathParts[1]
-					if len(pathParts) > 3 && pathParts[2] == "releases" && pathParts[3] == "tag" {
+					if len(pathParts) > 4 && pathParts[2] == "releases" && pathParts[3] == "tag" {
 						tag = pathParts[4]
 						emptyString := ""
 						assetMask = &emptyString

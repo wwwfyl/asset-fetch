@@ -510,7 +510,7 @@ func (m model) openAppReleases(idx int) (tea.Model, tea.Cmd) {
 	m.repoOwner = parts[0]
 	m.repoName = parts[1]
 	m.tag = ""
-	m.startWithReleases = false
+	m.startWithReleases = true
 	if app.AssetMask != "" {
 		am := app.AssetMask
 		m.assetMask = &am

@@ -46,3 +46,22 @@ apps:
       steps:
         - name: Remove binary
           run: rm -f "$INSTALL_DIR/gh.exe"
+
+  - name: afetch
+    repo: wwwfyl/asset-fetch
+    release_type: latest
+    asset_mask: "*windows_x86_64.zip"
+    install_dir: ~/bin
+    version:
+      command: afetch.exe --version
+      regex: 'afetch version (\S+)'
+    install:
+      unpack:
+        - run: unzip -o "$ASSET_FILE" -d "$WORK_DIR"
+      steps:
+        - name: Move binary
+          run: mv "$WORK_DIR/afetch.exe" "$INSTALL_DIR/afetch.exe"
+    uninstall:
+      steps:
+        - name: Remove binary
+          run: rm -f "$INSTALL_DIR/afetch.exe"

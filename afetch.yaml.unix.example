@@ -42,3 +42,22 @@ apps:
       steps:
         - name: Remove binary
           run: rm -f $INSTALL_DIR/delta
+
+  - name: afetch
+    repo: wwwfyl/asset-fetch
+    release_type: latest
+    asset_mask: "*linux_x86_64.tar.gz"
+    install_dir: ~/bin
+    version:
+      command: afetch --version
+      regex: 'afetch version (\S+)'
+    install:
+      unpack:
+        - run: tar xzf $ASSET_FILE -C $WORK_DIR
+      steps:
+        - name: Move binary
+          run: mv $WORK_DIR/afetch $INSTALL_DIR/afetch
+    uninstall:
+      steps:
+        - name: Remove binary
+          run: rm -f $INSTALL_DIR/afetch

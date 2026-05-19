@@ -1,0 +1,63 @@
+# Example afetch config for Linux / macOS.
+# Place at ~/.config/afetch.yaml or alongside the binary as ./afetch.yaml.
+
+# Optional global GitHub token (overridden per-app if set there).
+github_token: ""
+
+apps:
+  - name: lazygit
+    repo: jesseduffield/lazygit
+    release_type: latest
+    asset_mask: "*linux_x86_64.tar.gz"
+    install_dir: ~/bin
+    version:
+      command: lazygit --version
+      regex: 'version=([0-9.]+)'
+    install:
+      unpack:
+        - run: tar xzf $ASSET_FILE -C $WORK_DIR
+      steps:
+        - name: Move binary
+          run: mv $WORK_DIR/lazygit $INSTALL_DIR/lazygit
+    uninstall:
+      steps:
+        - name: Remove binary
+          run: rm -f $INSTALL_DIR/lazygit
+
+  - name: delta
+    repo: dandavison/delta
+    release_type: latest-stable
+    asset_mask: "*x86_64-unknown-linux-gnu.tar.gz"
+    install_dir: ~/bin
+    version:
+      command: delta --version
+      regex: 'delta (\S+)'
+    install:
+      unpack:
+        - run: tar xzf $ASSET_FILE -C $WORK_DIR
+      steps:
+        - name: Move binary
+          run: mv $WORK_DIR/delta-*/delta $INSTALL_DIR/delta
+    uninstall:
+      steps:
+        - name: Remove binary
+          run: rm -f $INSTALL_DIR/delta
+
+  - name: afetch
+    repo: wwwfyl/asset-fetch
+    release_type: latest
+    asset_mask: "*linux_x86_64.tar.gz"
+    install_dir: ~/bin
+    version:
+      command: afetch --version
+      regex: 'afetch version (\S+)'
+    install:
+      unpack:
+        - run: tar xzf $ASSET_FILE -C $WORK_DIR
+      steps:
+        - name: Move binary
+          run: mv $WORK_DIR/afetch $INSTALL_DIR/afetch
+    uninstall:
+      steps:
+        - name: Remove binary
+          run: rm -f $INSTALL_DIR/afetch

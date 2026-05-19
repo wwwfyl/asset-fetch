@@ -1,8 +1,10 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -40,23 +42,60 @@ type model struct {
 	tag               string
 	assetMask         *string
 	startWithReleases bool
+
+	// Download lifecycle (per-model, not global)
+	downloadCtx    context.Context
+	downloadCancel context.CancelFunc
+
+	// Injected from config at startup
+	gitHubToken string // effective token for the current single-app session
+	globalToken string // top-level github_token from the YAML config, used as the per-app fallback
+	downloadDir string // directory where assets are saved; defaults to cwd
+
+	// All apps from the YAML config; consumed by the dashboard.
+	apps []AppConfig
+
+	// Dashboard state: one tile per app, plus the focused index.
+	tiles        []TileInfo
+	selectedTile int
+
+	// fromDashboard is set when releases/assets were opened from a dashboard
+	// tile, so `q` returns to the dashboard instead of quitting.
+	fromDashboard bool
+
+	// confirmUninstall toggles the "Uninstall <name>? [y/N]" overlay.
+	confirmUninstall bool
+
+	// Per-download progress shared between the download goroutine and the tick loop.
+	currentProgress *ProgressState
+
+	// Last known terminal width from tea.WindowSizeMsg; 0 until the first resize.
+	width int
 }
 
 // Init bubbletea initialization
 func (m model) Init() tea.Cmd {
+	if m.errorMsg != "" {
+		return nil
+	}
+	if m.state == StateDashboard {
+		return initDashboardTiles(m)
+	}
 	return fetchReleases(m)
 }
 
 // Update bubbletea message processing - unified version
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		m.width = msg.Width
+		return m, nil
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "ctrl+c", "q":
 			if m.downloading {
-				// Cancel download
-				if downloadCancel != nil {
-					downloadCancel()
+				if m.downloadCancel != nil {
+					m.downloadCancel()
 				}
 				return m, func() tea.Msg {
 					return cancelDownloadMsg{}
@@ -67,6 +106,15 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.state = StateReleases
 				m.fromReleasesView = false
 				return m, nil
+			} else if m.fromDashboard && (m.state == StateReleases || m.state == StateAssets) {
+				// Go back to the dashboard.
+				m.state = StateDashboard
+				m.fromDashboard = false
+				m.fromReleasesView = false
+				return m, nil
+			} else if m.state == StateDashboard && m.confirmUninstall {
+				m.confirmUninstall = false
+				return m, nil
 			} else {
 				m.quitting = true
 				return m, tea.Quit
@@ -75,6 +123,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		// Handle state-specific navigation and actions
 		switch m.state {
+		case StateDashboard:
+			return m.handleDashboardInput(msg.String())
 		case StateReleases:
 			return m.handleReleasesInput(msg.String())
 		case StateAssets:
@@ -107,6 +157,45 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.errorMsg = string(msg)
 		m.loading = false
 
+	case tileUpdatedMsg:
+		if msg.index >= 0 && msg.index < len(m.tiles) {
+			t := &m.tiles[msg.index]
+			if msg.err != "" {
+				t.Status = TileStatusError
+				t.Err = msg.err
+			} else {
+				t.LatestVersion = msg.latestVersion
+				t.InstalledVersion = msg.installedVersion
+				t.Status = TileStatusReady
+			}
+		}
+
+	case updateCompleteMsg:
+		if msg.index >= 0 && msg.index < len(m.tiles) {
+			t := &m.tiles[msg.index]
+			if msg.err != "" {
+				t.Status = TileStatusError
+				t.Err = msg.err
+			} else {
+				t.Status = TileStatusReady
+				t.InstalledVersion = msg.newInstalled
+				t.Err = ""
+			}
+		}
+
+	case uninstallCompleteMsg:
+		if msg.index >= 0 && msg.index < len(m.tiles) {
+			t := &m.tiles[msg.index]
+			if msg.err != "" {
+				t.Status = TileStatusError
+				t.Err = msg.err
+			} else {
+				t.Status = TileStatusReady
+				t.InstalledVersion = msg.newInstalled
+				t.Err = ""
+			}
+		}
+
 	case startDownloadProgressMsg:
 		// Start download progress updates
 		m.downloading = true
@@ -119,13 +208,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		})
 
 	case updateDownloadProgressMsg:
-		// Update download progress
-		downloadProgressMutex.Lock()
-		progress := downloadProgress
-		downloadProgressMutex.Unlock()
-
-		// Update download queue progress
-		m.downloadQueue.UpdateProgress(progress, msg.asset.Size)
+		downloaded, _ := m.currentProgress.Get()
+		m.downloadQueue.UpdateProgress(downloaded, msg.asset.Size)
 
 		return m, tea.Tick(time.Second, func(tick time.Time) tea.Msg {
 			if m.downloading {
@@ -139,13 +223,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		// Move to next download in queue
 		if m.downloadQueue.NextDownload() {
-			// Start next download
 			asset := m.downloadQueue.GetCurrent()
+			m.currentProgress = &ProgressState{}
 			return m, tea.Batch(
 				func() tea.Msg {
 					return startDownloadProgressMsg{asset: *asset}
 				},
-				downloadAsset(*asset),
+				downloadAsset(m.downloadCtx, *asset, m.gitHubToken, m.downloadDir, m.currentProgress),
 			)
 		} else {
 			// All downloads completed (with errors)
@@ -176,15 +260,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		// Handle checksum verification result
 		if msg.success {
-			// Check if there are more downloads in the queue
 			if m.downloadQueue.NextDownload() {
-				// Start next download
 				asset := m.downloadQueue.GetCurrent()
+				m.currentProgress = &ProgressState{}
 				return m, tea.Batch(
 					func() tea.Msg {
 						return startDownloadProgressMsg{asset: *asset}
 					},
-					downloadAsset(*asset),
+					downloadAsset(m.downloadCtx, *asset, m.gitHubToken, m.downloadDir, m.currentProgress),
 				)
 			} else {
 				// All downloads completed
@@ -345,44 +428,125 @@ func (m model) startDownload() (tea.Model, tea.Cmd) {
 		m.downloadQueue.AddMultiple(selectedAssets)
 		if !m.downloadQueue.IsEmpty() {
 			asset := m.downloadQueue.GetCurrent()
+			m.currentProgress = &ProgressState{}
 			return m, tea.Batch(
 				func() tea.Msg {
 					return startDownloadProgressMsg{asset: *asset}
 				},
-				downloadAsset(*asset),
+				downloadAsset(m.downloadCtx, *asset, m.gitHubToken, m.downloadDir, m.currentProgress),
 			)
 		}
 	}
 	return m, nil
 }
 
-// View interface display - unified version
-func (m model) View() string {
-	switch m.state {
-	case StateReleases:
-		return m.listView.Render()
-	case StateAssets:
-		return m.listView.Render()
-	case StateDownloading:
-		s := "Download progress:\n\n"
-		s += m.progressFormatter.RenderProgressTable(m.downloadQueue.assets, m.downloadQueue.progress)
-		return s
-	case StateFinished:
-		s := "Download results:\n\n"
-		s += m.progressFormatter.RenderProgressTable(m.downloadQueue.assets, m.downloadQueue.progress)
-		s += "\n" + m.downloadResult + "\n"
-		return s
+// handleDashboardInput handles key input when the dashboard is the active state.
+func (m model) handleDashboardInput(key string) (tea.Model, tea.Cmd) {
+	if m.confirmUninstall {
+		switch key {
+		case "y", "Y":
+			m.confirmUninstall = false
+			if m.selectedTile >= 0 && m.selectedTile < len(m.tiles) && m.selectedTile < len(m.apps) {
+				t := &m.tiles[m.selectedTile]
+				if t.Status == TileStatusUpdating || t.Status == TileStatusUninstalling {
+					return m, nil
+				}
+				t.Status = TileStatusUninstalling
+				t.Err = ""
+				return m, startAppUninstall(m.selectedTile, m.apps[m.selectedTile])
+			}
+			return m, nil
+		case "n", "N", "esc":
+			m.confirmUninstall = false
+		}
+		return m, nil
 	}
 
-	// Default states
+	n := len(m.tiles)
+	if n == 0 {
+		return m, nil
+	}
+
+	switch key {
+	case "tab", "right", "l":
+		m.selectedTile = (m.selectedTile + 1) % n
+	case "shift+tab", "left", "h":
+		m.selectedTile = (m.selectedTile - 1 + n) % n
+	case "enter":
+		return m.openAppReleases(m.selectedTile)
+	case "u":
+		if m.selectedTile >= 0 && m.selectedTile < len(m.tiles) && m.selectedTile < len(m.apps) {
+			t := &m.tiles[m.selectedTile]
+			if t.Status == TileStatusUpdating || t.Status == TileStatusUninstalling {
+				return m, nil
+			}
+			t.Status = TileStatusUpdating
+			t.Err = ""
+			return m, startAppUpdate(m.downloadCtx, m.selectedTile, m.apps[m.selectedTile], m.globalToken)
+		}
+	case "d":
+		if m.selectedTile >= 0 && m.selectedTile < len(m.apps) {
+			m.confirmUninstall = true
+		}
+	}
+	return m, nil
+}
+
+// openAppReleases switches the model to the releases/assets list for the app
+// at idx, reusing the existing fetchReleases pipeline. fromDashboard is set so
+// `q` later returns to the dashboard.
+func (m model) openAppReleases(idx int) (tea.Model, tea.Cmd) {
+	if idx < 0 || idx >= len(m.apps) {
+		return m, nil
+	}
+	app := m.apps[idx]
+	parts := strings.SplitN(app.Repo, "/", 2)
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+		m.errorMsg = "invalid repo: " + app.Repo
+		return m, nil
+	}
+	m.repoOwner = parts[0]
+	m.repoName = parts[1]
+	m.tag = ""
+	m.startWithReleases = true
+	if app.AssetMask != "" {
+		am := app.AssetMask
+		m.assetMask = &am
+	} else {
+		m.assetMask = nil
+	}
+	m.gitHubToken = tokenForApp(app, m.globalToken)
+	m.fromDashboard = true
+	m.loading = true
+	return m, fetchReleases(m)
+}
+
+// View interface display - unified version
+func (m model) View() string {
+	// Overlay states take precedence over the in-progress view so that
+	// errors and loading spinners are visible before lists are populated.
 	switch {
 	case m.quitting:
 		return "Goodbye!\n"
-	case m.loading:
-		return "Searching for available artifacts...\n"
 	case m.errorMsg != "":
 		return fmt.Sprintf("Error: %s\n", m.errorMsg)
-	default:
-		return "No artifacts found\n"
+	case m.loading:
+		return "Searching for available artifacts...\n"
 	}
+
+	switch m.state {
+	case StateDashboard:
+		return renderDashboard(m)
+	case StateReleases, StateAssets:
+		return m.listView.Render()
+	case StateDownloading:
+		return "Download progress:\n\n" +
+			m.progressFormatter.RenderProgressTable(m.downloadQueue.assets, m.downloadQueue.progress)
+	case StateFinished:
+		return "Download results:\n\n" +
+			m.progressFormatter.RenderProgressTable(m.downloadQueue.assets, m.downloadQueue.progress) +
+			"\n" + m.downloadResult + "\n"
+	}
+
+	return "No artifacts found\n"
 }

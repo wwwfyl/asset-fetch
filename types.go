@@ -1,25 +1,85 @@
 package main
 
 import (
-	"context"
 	"io"
 	"sync"
 )
 
-// Global context and cancel function for download cancellation
-var downloadContext context.Context
-var downloadCancel context.CancelFunc
+// ProgressState is a thread-safe container for a single download's byte counters.
+// Held by pointer in model so bubbletea model copies share the same instance.
+type ProgressState struct {
+	mu         sync.Mutex
+	downloaded int64
+	total      int64
+}
 
-// Global variable for download progress
-var downloadProgress int64
-var downloadProgressMutex sync.Mutex
+// Update sets the current byte counters; safe to call from any goroutine.
+func (ps *ProgressState) Update(downloaded, total int64) {
+	ps.mu.Lock()
+	ps.downloaded = downloaded
+	ps.total = total
+	ps.mu.Unlock()
+}
 
-// Config structure for storing configuration
+// Get returns the current byte counters; safe to call from any goroutine.
+func (ps *ProgressState) Get() (downloaded, total int64) {
+	ps.mu.Lock()
+	defer ps.mu.Unlock()
+	return ps.downloaded, ps.total
+}
+
+// Config is the legacy single-app key=value config (kept for migration to GlobalConfig).
 type Config struct {
 	GitHubToken string
 	RepoOwner   string
 	RepoName    string
 	AssetMask   string
+}
+
+// GlobalConfig is the top-level YAML config: a global token and a list of tracked apps.
+type GlobalConfig struct {
+	GitHubToken string      `yaml:"github_token"`
+	Apps        []AppConfig `yaml:"apps"`
+}
+
+// AppConfig is one tracked application: where to fetch it from, how to detect the local
+// version, which asset to download, and what to do with it after download.
+type AppConfig struct {
+	Name        string          `yaml:"name"`
+	Repo        string          `yaml:"repo"`         // "owner/repo"
+	ReleaseType string          `yaml:"release_type"` // latest | latest-stable | pre-release
+	AssetMask   string          `yaml:"asset_mask"`
+	InstallDir  string          `yaml:"install_dir"`  // optional; default depends on euid
+	GitHubToken string          `yaml:"github_token"` // optional per-app override
+	Version     VersionConfig   `yaml:"version"`
+	Install     InstallConfig   `yaml:"install"`
+	Uninstall   UninstallConfig `yaml:"uninstall"`
+}
+
+// VersionConfig describes how to detect the currently installed version of an app.
+type VersionConfig struct {
+	Command string `yaml:"command"` // full command line, e.g. "lazygit --version"
+	Regex   string `yaml:"regex"`   // first capture group is the version string
+}
+
+// InstallConfig groups the unpack and install phases. Both are lists of shell
+// steps executed in order; unpack runs first (typically to extract the asset)
+// and steps follows (typically to move files into INSTALL_DIR).
+type InstallConfig struct {
+	Unpack []InstallStep `yaml:"unpack"`
+	Steps  []InstallStep `yaml:"steps"`
+}
+
+// UninstallConfig describes how to remove an installed app.
+type UninstallConfig struct {
+	Steps []InstallStep `yaml:"steps"`
+}
+
+// InstallStep is one shell command to run during install/uninstall.
+// Run is executed as `sh -c "$run"` with $ASSET_FILE, $WORK_DIR, $INSTALL_DIR, $VERSION set.
+type InstallStep struct {
+	Name string `yaml:"name"`
+	Run  string `yaml:"run"`
 }
 
 // Asset structure for storing artifact information
@@ -35,9 +95,10 @@ type Asset struct {
 
 // Release structure for storing release information
 type Release struct {
-	TagName string  `json:"tag_name"`
-	Name    string  `json:"name"`
-	Assets  []Asset `json:"assets"`
+	TagName    string  `json:"tag_name"`
+	Name       string  `json:"name"`
+	Prerelease bool    `json:"prerelease"`
+	Assets     []Asset `json:"assets"`
 }
 
 // AssetInfo structure for storing artifact information
@@ -156,11 +217,32 @@ func (dq *DownloadQueue) Reset() {
 type ViewState int
 
 const (
-	StateReleases ViewState = iota
+	StateDashboard ViewState = iota
+	StateReleases
 	StateAssets
 	StateDownloading
 	StateFinished
 )
+
+// TileStatus tracks the per-app card lifecycle on the dashboard.
+type TileStatus int
+
+const (
+	TileStatusLoading TileStatus = iota
+	TileStatusReady
+	TileStatusError
+	TileStatusUpdating
+	TileStatusUninstalling
+)
+
+// TileInfo is the rendered state of one dashboard card.
+type TileInfo struct {
+	Name             string
+	LatestVersion    string
+	InstalledVersion string
+	Status           TileStatus
+	Err              string
+}
 
 // Custom messages
 type errorMsg string
@@ -189,4 +271,28 @@ type startDownloadProgressMsg struct {
 // updateDownloadProgressMsg message to update download progress
 type updateDownloadProgressMsg struct {
 	asset AssetInfo
+}
+
+// tileUpdatedMsg is emitted by background fetches to update one dashboard tile.
+type tileUpdatedMsg struct {
+	index            int
+	latestVersion    string
+	installedVersion string
+	err              string
+}
+
+// updateCompleteMsg signals that the update pipeline finished for one tile.
+type updateCompleteMsg struct {
+	index        int
+	succeeded    bool
+	newInstalled string
+	err          string
+}
+
+// uninstallCompleteMsg signals that the uninstall pipeline finished for one tile.
+type uninstallCompleteMsg struct {
+	index        int
+	succeeded    bool
+	newInstalled string
+	err          string
 }

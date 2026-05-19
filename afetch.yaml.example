@@ -1,0 +1,59 @@
+# Example configuration for afetch.
+# Place this file at ~/.config/afetch.yaml or alongside the binary as ./afetch.yaml.
+
+# Optional global GitHub token. Used for all apps unless overridden per-app.
+# Generate one at https://github.com/settings/tokens
+# Required only for private repositories or to lift API rate limits.
+github_token: "your_github_token_here"
+
+apps:
+  # Each entry tracks one application.
+  - name: lazygit
+    repo: jesseduffield/lazygit
+
+    # Which release the dashboard treats as "latest":
+    #   latest         most recent by date (includes prereleases)
+    #   latest-stable  most recent non-prerelease
+    #   pre-release    most recent prerelease only
+    release_type: latest
+
+    # Glob pattern that selects which asset to download.
+    asset_mask: "*linux_x86_64.tar.gz"
+
+    # Optional: where install steps copy files. Defaults:
+    #   /usr/local/bin  (when running as root)
+    #   ~/bin           (otherwise)
+    install_dir: ~/bin
+
+    # Optional per-app token override.
+    # github_token: "ghp_..."
+
+    # How to detect the currently-installed version.
+    # The command is executed; the first capture group of the regex is the version.
+    version:
+      command: lazygit --version
+      regex: 'version=([0-9.]+)'
+
+    # What to do after the asset is downloaded.
+    #
+    # All install/uninstall steps run as `sh -c "<run>"` in $WORK_DIR with:
+    #   $ASSET_FILE   path to the downloaded asset
+    #   $WORK_DIR     work directory (also cwd of every step)
+    #   $INSTALL_DIR  install_dir from above, or the default
+    #   $VERSION      the release tag (e.g. v0.44.1)
+    #
+    # `run:` accepts multi-line shell scripts via YAML `|`.
+    install:
+      unpack:
+        - name: Extract archive
+          run: tar xzf $ASSET_FILE -C $WORK_DIR
+      steps:
+        - name: Move binary
+          run: mv $WORK_DIR/lazygit $INSTALL_DIR/lazygit
+
+    # Steps executed by the dashboard's "uninstall" action.
+    # The same env variables are available except $ASSET_FILE / $WORK_DIR.
+    uninstall:
+      steps:
+        - name: Remove binary
+          run: rm -f $INSTALL_DIR/lazygit

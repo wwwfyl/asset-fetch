@@ -1,0 +1,67 @@
+# Example afetch config for Windows.
+# Place at %LOCALAPPDATA%\afetch\afetch.yaml or alongside the binary as .\afetch.yaml.
+#
+# Install steps execute through `sh -c`, so a POSIX shell must be available
+# (Git Bash, MSYS2, or WSL). Paths are written with forward slashes so the
+# shell handles them; quote $INSTALL_DIR when it may contain spaces.
+
+github_token: ""
+
+apps:
+  - name: lazygit
+    repo: jesseduffield/lazygit
+    release_type: latest
+    asset_mask: "*Windows_x86_64.zip"
+    # Default install_dir on Windows is "$HOME/bin"; override here if needed.
+    install_dir: ~/bin
+    version:
+      command: lazygit.exe --version
+      regex: 'version=([0-9.]+)'
+    install:
+      unpack:
+        - run: unzip -o "$ASSET_FILE" -d "$WORK_DIR"
+      steps:
+        - name: Move binary
+          run: mv "$WORK_DIR/lazygit.exe" "$INSTALL_DIR/lazygit.exe"
+    uninstall:
+      steps:
+        - name: Remove binary
+          run: rm -f "$INSTALL_DIR/lazygit.exe"
+
+  - name: gh
+    repo: cli/cli
+    release_type: latest-stable
+    asset_mask: "*windows_amd64.zip"
+    install_dir: ~/bin
+    version:
+      command: gh.exe --version
+      regex: 'gh version (\S+)'
+    install:
+      unpack:
+        - run: unzip -o "$ASSET_FILE" -d "$WORK_DIR"
+      steps:
+        - name: Move binary
+          run: mv "$WORK_DIR/bin/gh.exe" "$INSTALL_DIR/gh.exe"
+    uninstall:
+      steps:
+        - name: Remove binary
+          run: rm -f "$INSTALL_DIR/gh.exe"
+
+  - name: afetch
+    repo: wwwfyl/asset-fetch
+    release_type: latest
+    asset_mask: "*windows_x86_64.zip"
+    install_dir: ~/bin
+    version:
+      command: afetch.exe --version
+      regex: 'afetch version (\S+)'
+    install:
+      unpack:
+        - run: unzip -o "$ASSET_FILE" -d "$WORK_DIR"
+      steps:
+        - name: Move binary
+          run: mv "$WORK_DIR/afetch.exe" "$INSTALL_DIR/afetch.exe"
+    uninstall:
+      steps:
+        - name: Remove binary
+          run: rm -f "$INSTALL_DIR/afetch.exe"

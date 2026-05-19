@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -17,181 +16,89 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
-// downloadAsset download artifact using http.Client
-func downloadAsset(asset AssetInfo) tea.Cmd {
+// downloadAsset downloads an asset via HTTP into destDir and returns a bubbletea message.
+// token is the GitHub personal access token (may be empty for public repos).
+// progress is updated concurrently as bytes arrive; the tick loop reads it from the model.
+func downloadAsset(ctx context.Context, asset AssetInfo, token, destDir string, progress *ProgressState) tea.Cmd {
 	return func() tea.Msg {
-		config, err := loadConfig()
-		if err != nil {
-			return downloadErrorMsg(err.Error())
-		}
-
-		// Create HTTP client with context
-		client := &http.Client{}
-
-		// Create request with context
-		req, err := http.NewRequestWithContext(downloadContext, "GET", asset.URL, nil)
+		req, err := http.NewRequestWithContext(ctx, "GET", asset.URL, nil)
 		if err != nil {
 			return downloadErrorMsg(fmt.Sprintf("Error creating request: %v", err))
 		}
-
-		// Set headers
 		req.Header.Set("Accept", "application/octet-stream")
-		// Only add authorization header if token is provided
-		if config.GitHubToken != "" {
-			req.Header.Set("Authorization", "Bearer "+config.GitHubToken)
-		}
-		req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
-
-		// Execute request
-		resp, err := client.Do(req)
-		if err != nil {
-			// Check if the error is due to context cancellation
-			if errors.Is(downloadContext.Err(), context.Canceled) {
-				return downloadErrorMsg("Download cancelled by user")
-			}
-			return downloadErrorMsg(fmt.Sprintf("Error downloading file: %v", err))
-		}
-		defer func() {
-			if closeErr := resp.Body.Close(); closeErr != nil {
-				// Log the error but don't return it as it's in defer
-			}
-		}()
-
-		// Check response status
-		if resp.StatusCode != http.StatusOK {
-			return downloadErrorMsg(fmt.Sprintf("HTTP error: %d", resp.StatusCode))
-		}
-
-		// Create output file
-		out, err := os.Create(asset.Name)
-		if err != nil {
-			return downloadErrorMsg(fmt.Sprintf("Error creating file: %v", err))
-		}
-		defer func() {
-			if closeErr := out.Close(); closeErr != nil {
-				// Log the error but don't return it as it's in defer
-			}
-		}()
-
-		// Create a progress reader
-		progressReader := &ProgressReader{
-			reader: resp.Body,
-			total:  asset.Size,
-			onProgress: func(downloaded, total int64) {
-				// Update global progress variable
-				downloadProgressMutex.Lock()
-				downloadProgress = downloaded
-				downloadProgressMutex.Unlock()
-			},
-		}
-
-		// Copy response body to file
-		_, err = io.Copy(out, progressReader)
-		if err != nil {
-			// Check if the error is due to context cancellation
-			if errors.Is(downloadContext.Err(), context.Canceled) {
-				// Clean up partial file
-				if removeErr := os.Remove(asset.Name); removeErr != nil {
-					// Log the error but don't return it as we already have a cancellation error
-				}
-				return downloadErrorMsg("Download cancelled by user")
-			}
-			// Clean up partial file
-			if removeErr := os.Remove(asset.Name); removeErr != nil {
-				// Log the error but don't return it as we already have a write error
-			}
-			return downloadErrorMsg(fmt.Sprintf("Error writing file: %v", err))
-		}
-
-		// Verify checksum if digest is provided
-		if err := verifyChecksum(asset.Name, asset.Digest); err != nil {
-			// Clean up file with incorrect checksum
-			if removeErr := os.Remove(asset.Name); removeErr != nil {
-				// Log the error but don't return it as we already have a checksum error
-			}
-			return downloadErrorMsg(fmt.Sprintf("Checksum verification failed for %s: %v", asset.Name, err))
-		}
-
-		return checksumVerifiedMsg{
-			filename: asset.Name,
-			success:  true,
-			err:      "",
-		}
-	}
-}
-
-// fetchReleases get list of releases with ASSET_MASK filtering
-func fetchReleases(m model) tea.Cmd {
-	return func() tea.Msg {
-		config, err := loadConfig()
-		if err != nil {
-			// If URL is provided, we might not need a config file
-			if m.repoOwner == "" || m.repoName == "" {
-				return errorMsg(err.Error())
-			}
-		}
-
-		repoOwner := m.repoOwner
-		repoName := m.repoName
-		if repoOwner == "" || repoName == "" {
-			repoOwner = config.RepoOwner
-			repoName = config.RepoName
-		}
-
-		var apiURL string
-		if m.tag != "" {
-			apiURL = fmt.Sprintf("https://api.github.com/repos/%s/%s/releases/tags/%s", repoOwner, repoName, m.tag)
-		} else {
-			apiURL = fmt.Sprintf("https://api.github.com/repos/%s/%s/releases", repoOwner, repoName)
-		}
-
-		client := &http.Client{}
-		req, err := http.NewRequest("GET", apiURL, nil)
-		if err != nil {
-			return errorMsg(err.Error())
-		}
-
-		req.Header.Set("Accept", "application/vnd.github+json")
-
-		// Use token from config if available
-		var token string
-		if config != nil {
-			token = config.GitHubToken
-		}
-
-		// Only add authorization header if token is provided
 		if token != "" {
 			req.Header.Set("Authorization", "Bearer "+token)
 		}
 		req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
 
-		resp, err := client.Do(req)
+		resp, err := http.DefaultClient.Do(req)
 		if err != nil {
-			return errorMsg(err.Error())
-		}
-		defer func() {
-			if closeErr := resp.Body.Close(); closeErr != nil {
-				// Log the error but don't return it as it's in defer
+			if errors.Is(ctx.Err(), context.Canceled) {
+				return downloadErrorMsg("Download cancelled by user")
 			}
-		}()
+			return downloadErrorMsg(fmt.Sprintf("Error downloading file: %v", err))
+		}
+		defer resp.Body.Close()
 
 		if resp.StatusCode != http.StatusOK {
-			return errorMsg(fmt.Sprintf("GitHub API error: %d", resp.StatusCode))
+			return downloadErrorMsg(fmt.Sprintf("HTTP error: %d", resp.StatusCode))
 		}
 
-		body, err := io.ReadAll(resp.Body)
+		filePath := asset.Name
+		if destDir != "" {
+			filePath = destDir + string(os.PathSeparator) + asset.Name
+		}
+
+		out, err := os.Create(filePath)
+		if err != nil {
+			return downloadErrorMsg(fmt.Sprintf("Error creating file: %v", err))
+		}
+		defer out.Close()
+
+		progressReader := &ProgressReader{
+			reader: resp.Body,
+			total:  asset.Size,
+			onProgress: func(downloaded, total int64) {
+				progress.Update(downloaded, total)
+			},
+		}
+
+		_, err = io.Copy(out, progressReader)
+		if err != nil {
+			if errors.Is(ctx.Err(), context.Canceled) {
+				os.Remove(filePath) //nolint:errcheck
+				return downloadErrorMsg("Download cancelled by user")
+			}
+			os.Remove(filePath) //nolint:errcheck
+			return downloadErrorMsg(fmt.Sprintf("Error writing file: %v", err))
+		}
+
+		if err := verifyChecksum(filePath, asset.Digest); err != nil {
+			os.Remove(filePath) //nolint:errcheck
+			return downloadErrorMsg(fmt.Sprintf("Checksum verification failed for %s: %v", filePath, err))
+		}
+
+		return checksumVerifiedMsg{filename: filePath, success: true}
+	}
+}
+
+// fetchReleases fetches GitHub releases and returns a bubbletea message with either
+// a release list or a pre-filtered asset list (when ASSET_MASK is set).
+// All parameters are read from model fields; no config file is loaded here.
+func fetchReleases(m model) tea.Cmd {
+	return func() tea.Msg {
+		if m.repoOwner == "" || m.repoName == "" {
+			return errorMsg("missing repo: pass a GitHub releases URL or run from the dashboard")
+		}
+
+		releases, err := fetchReleasesFromGitHub(m.downloadCtx, m.repoOwner, m.repoName, m.tag, m.gitHubToken)
 		if err != nil {
 			return errorMsg(err.Error())
 		}
 
-		// If a specific tag is requested, the API returns a single release object
+		// Tag-specific fetch: expose assets from that single release directly.
 		if m.tag != "" {
-			var release Release
-			err = json.Unmarshal(body, &release)
-			if err != nil {
-				return errorMsg(err.Error())
-			}
-			releases := []Release{release}
+			release := releases[0]
 			var assets []AssetInfo
 			formatter := AssetFormatter{}
 			for _, asset := range release.Assets {
@@ -202,28 +109,18 @@ func fetchReleases(m model) tea.Cmd {
 			return releasesMsg{assets: assets, releases: releases}
 		}
 
-		var releases []Release
-		err = json.Unmarshal(body, &releases)
-		if err != nil {
-			return errorMsg(err.Error())
-		}
-
 		assetMaskValue := ""
 		if m.assetMask != nil {
 			assetMaskValue = *m.assetMask
-		} else if config != nil {
-			assetMaskValue = config.AssetMask
 		}
 
-		// If AssetMask is empty OR if we are starting with releases view from URL
 		if assetMaskValue == "" || m.startWithReleases {
 			return releasesMsg{releases: releases}
 		}
 
-		// Filter assets by ASSET_MASK
+		// Filter assets by ASSET_MASK across all releases.
 		var assets []AssetInfo
 		formatter := AssetFormatter{}
-
 		for _, release := range releases {
 			for _, asset := range release.Assets {
 				matched, err := path.Match(assetMaskValue, asset.Name)

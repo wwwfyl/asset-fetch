@@ -2,26 +2,26 @@
 
 [![Release](https://img.shields.io/github/v/release/wwwfyl/asset-fetch?style=flat-square)](https://github.com/wwwfyl/asset-fetch/releases)
 
-Interactive CLI tool for downloading GitHub release assets from public and private repositories with interactive search. No GitHub CLI required - direct API integration. Features a `bubbletea` TUI, smart filtering, and token-based authentication.
+Interactive CLI for tracking, installing, updating, and uninstalling tools distributed via GitHub release assets. A YAML config lists the apps you care about, and the TUI dashboard shows each tool's installed and latest versions side by side. No GitHub CLI required — direct API integration.
 
 ## Features
 
--   **Interactive TUI:** Navigate releases and assets with a clean, keyboard-driven interface.
--   **Release Search:** Type to filter releases by substring (case-insensitive).
--   **Multi-Asset Downloads:** Select and download multiple assets in a single batch operation.
--   **Smart Filtering:** Use glob patterns (`*.zip`, `app-*-amd64`, etc.) to filter assets directly.
--   **URL-Based Fetching:** Pass a GitHub releases URL directly to fetch assets from a specific repository or release.
--   **Configuration File:** Set your GitHub token, default repository, and asset masks in `afetch.conf`.
--   **Progress Tracking:** Monitor download progress with a clean, tabular view.
--   **No Dependencies:** Single, self-contained binary. No need for the GitHub CLI.
+- **Multi-app dashboard:** one card per app showing local and latest versions; update or uninstall from the dashboard.
+- **Interactive TUI:** browse releases and assets with a `bubbletea`-based keyboard interface.
+- **Release Search:** type to filter releases by substring (case-insensitive).
+- **Multi-Asset Downloads:** select and download multiple assets in a single batch.
+- **Smart Filtering:** glob `asset_mask` per app (e.g. `*linux_x86_64.tar.gz`) drives auto-update and pre-filters assets.
+- **URL-Based Fetching:** pass a GitHub releases URL directly to browse a specific repo or release tag.
+- **Token-Based Auth:** global `github_token` plus optional per-app overrides for private repos and rate limits.
+- **No Dependencies:** single self-contained binary.
 
 ## Installation
 
-You can download a pre-compiled binary from the [releases page](https://github.com/wwwfyl/asset-fetch/releases) or build from source.
+Download a pre-compiled binary from the [releases page](https://github.com/wwwfyl/asset-fetch/releases) or build from source.
 
 ### Build from Source
 
-You will need Go 1.21+ to build from source.
+Requires Go 1.21+.
 
 ```bash
 go build -o afetch
@@ -29,125 +29,128 @@ go build -o afetch
 
 ## Quick Start
 
-1.  **Run with a URL:** The fastest way to use `asset-fetch` is by passing a GitHub releases URL.
+### 1. Browse releases for a single repository
 
-    ```bash
-    # Fetch from the latest release of a repository
-    ./afetch https://github.com/charmbracelet/bubbletea/releases
+```bash
+# Latest release of a repository
+./afetch https://github.com/charmbracelet/bubbletea/releases
 
-    # Fetch from a specific release tag
-    ./afetch https://github.com/charmbracelet/bubbletea/releases/tag/v0.25.0
-    ```
+# A specific release tag
+./afetch https://github.com/charmbracelet/bubbletea/releases/tag/v0.25.0
+```
 
-2.  **Use the Configuration File:** For repositories you access frequently, create an `afetch.conf` file.
+### 2. Set up the dashboard
 
-    ```bash
-    # Create a config file (see Configuration section for paths)
-    cat > ~/.config/afetch.conf <<EOL
-    GITHUB_TOKEN="your_github_token"
-    REPO_OWNER="owner"
-    REPO_NAME="repo"
-    ASSET_MASK="*.zip"
-    EOL
+Create an `afetch.yaml` (see [Configuration](#configuration) for paths) describing the tools you want to track. Minimal example:
 
-    # Run the tool
-    ./afetch
-    ```
+```yaml
+github_token: ""
+
+apps:
+  - name: lazygit
+    repo: jesseduffield/lazygit
+    release_type: latest
+    asset_mask: "*linux_x86_64.tar.gz"
+    install_dir: ~/bin
+    version:
+      command: lazygit --version
+      regex: 'version=([0-9.]+)'
+    install:
+      unpack:
+        - run: tar xzf $ASSET_FILE -C $WORK_DIR
+      steps:
+        - name: Move binary
+          run: mv $WORK_DIR/lazygit $INSTALL_DIR/lazygit
+    uninstall:
+      steps:
+        - name: Remove binary
+          run: rm -f $INSTALL_DIR/lazygit
+```
+
+Run `./afetch` with no arguments to open the dashboard.
+
+Full templates: [afetch.yaml.unix.example](afetch.yaml.unix.example) and [afetch.yaml.windows.example](afetch.yaml.windows.example).
 
 ## Usage
 
-The tool operates in two main modes: release selection and asset selection.
+### Dashboard
 
-### Navigation
+Run `./afetch` without arguments. Each tile shows the app name, latest GitHub version, locally installed version, and a status line (`✓ up to date`, `● update available`, `✗ <error>`, etc.).
 
--   **`Up/Down`**: Navigate lists.
--   **`j/k`**: Navigate lists (when search is empty in release view).
--   **`/`**: Activate search mode (release and asset views).
--   **`Backspace`**: Remove last character from search (search mode only).
--   **`Esc`**: Exit search mode and clear filter; clear active filter in nav mode.
--   **`Enter`** or **`Space`**: Confirm release selection; toggle an asset for download in asset view.
--   **`q`** or **`Ctrl+C`**: Go back to release list (from asset view), cancel download (while downloading), or exit.
+| Key               | Action                                                |
+|-------------------|-------------------------------------------------------|
+| `Tab` / `←` / `→` | Move focus between tiles                              |
+| `u`               | Run the update pipeline for the focused tile          |
+| `d`               | Uninstall the focused tile (prompts for confirmation) |
+| `Enter`           | Open the GitHub releases list for the focused tile    |
+| `q` / `Ctrl+C`    | Quit                                                  |
 
-### 1. Release Selection
+### Releases and assets views
 
-If you run `afetch` with a repository URL or without a specific `ASSET_MASK`, you will be prompted to select a release. Select one to proceed to the asset list.
+Reached either via `Enter` from the dashboard or by passing a URL on the command line.
 
-### 2. Asset Selection
-
-Once a release is selected, you can choose which assets to download. Use the spacebar to select one or more assets, then press enter to begin downloading.
+| Key                   | Action                                                                          |
+|-----------------------|---------------------------------------------------------------------------------|
+| `↑` / `↓` / `j` / `k` | Navigate the list                                                               |
+| `/`                   | Activate search                                                                 |
+| `Backspace`           | Remove last search character                                                    |
+| `Esc`                 | Exit search and clear filter                                                    |
+| `Enter` / `Space`     | Confirm release; toggle asset for download                                      |
+| `q` / `Ctrl+C`        | Back to releases (from assets); back to dashboard; or cancel a running download |
 
 ## Configuration
 
-`asset-fetch` can be configured via an `afetch.conf` file. The file is searched for in the following locations, in order of priority:
+`afetch` looks for `afetch.yaml` in the following locations, in order:
 
-1.  **Current Directory:** In the same directory as the `afetch` executable. This allows for project-specific configurations.
-2.  **User Configuration Directory:**
-    -   **Linux/macOS:** `~/.config/afetch.conf`
-    -   **Windows:** `%LOCALAPPDATA%\afetch\afetch.conf`
+1. The directory containing the `afetch` binary (project-local override).
+2. The platform user-config directory:
+   - **Linux/macOS:** `~/.config/afetch.yaml`
+   - **Windows:** `%LOCALAPPDATA%\afetch\afetch.yaml`
 
-The first file found will be used. This means a local `afetch.conf` will always take precedence over the global one.
+The first file found wins. Legacy `afetch.conf` files (the pre-YAML key=value format) are auto-migrated to `afetch.yaml` on first run; the original is preserved as `<path>.bak`.
 
-### Configuration Options
+### Top-level fields
 
-| Variable       | Description                                                                                                                             |
-|----------------|-----------------------------------------------------------------------------------------------------------------------------------------|
-| `GITHUB_TOKEN` | Your GitHub Personal Access Token. Required for private repositories and to avoid rate limiting.                                        |
-| `REPO_OWNER`   | The owner of the repository (e.g., `wwwfyl`).                                                                                           |
-| `REPO_NAME`    | The name of the repository (e.g., `asset-fetch`).                                                                                       |
-| `ASSET_MASK`   | An optional glob pattern to filter assets (e.g., `*.zip`). If set, the tool skips release selection and shows matching assets directly. |
+| Field          | Description                                                                          |
+|----------------|--------------------------------------------------------------------------------------|
+| `github_token` | Optional. Global token used as a fallback when an app does not set its own.          |
+| `apps`         | List of tracked applications (see below).                                            |
 
-### Example `afetch.conf`
+### Per-app fields
 
-```ini
-# GitHub API configuration
-GITHUB_TOKEN="ghp_xxxxxxxxxxxxxxxxxxxx"
+| Field          | Description                                                                          |
+|----------------|--------------------------------------------------------------------------------------|
+| `name`         | Display name shown on the dashboard tile.                                            |
+| `repo`         | `owner/repo` on GitHub.                                                              |
+| `release_type` | `latest` (default), `latest-stable` (skip prereleases), or `pre-release`.            |
+| `asset_mask`   | Glob matched against asset filenames (e.g. `*windows_x86_64.zip`).                   |
+| `install_dir`  | Destination directory; set explicitly to override the default `~/bin`.               |
+| `github_token` | Per-app override of the top-level token.                                             |
+| `version`      | How to detect the locally installed version (see below).                             |
+| `install`      | `unpack` and `steps` lists run during install/update.                                |
+| `uninstall`    | `steps` list run on `d` from the dashboard.                                          |
 
-# Default repository
-REPO_OWNER="wwwfyl"
-REPO_NAME="asset-fetch"
+### `version`
 
-# Optional: Filter for assets matching a pattern.
-# If this is empty or commented out, you will see the release list first.
-ASSET_MASK="*_linux_x86_64.tar.gz"
-
+```yaml
+version:
+  command: lazygit --version
+  regex: 'version=([0-9.]+)'
 ```
 
-## Examples
+`command` is run; the first capture group of `regex` becomes the installed version compared against the GitHub release tag (with a leading `v` stripped).
 
-### Download from a URL
+### `install` and `uninstall` steps
 
-The most direct way to use the tool.
+Each step's `run` is executed through `sh -c` with the following environment variables:
 
-```bash
-# Show releases for afetch
-./afetch https://github.com/wwwfyl/asset-fetch/releases
+| Variable       | Meaning                                              |
+|----------------|------------------------------------------------------|
+| `$ASSET_FILE`  | Path to the downloaded asset.                        |
+| `$WORK_DIR`    | Temporary directory; safe to extract into.           |
+| `$INSTALL_DIR` | Resolved `install_dir` for the app.                  |
+| `$VERSION`     | Release tag of the selected release.                 |
 
-# Go directly to a specific afetch release
-./afetch https://github.com/wwwfyl/asset-fetch/releases/tag/v0.0.1
-```
+On Windows, a POSIX shell must be available (Git Bash, MSYS2, or WSL); paths are written with forward slashes.
 
-### Filter Assets with `ASSET_MASK`
-
-Set `ASSET_MASK` in your `afetch.conf` to skip release selection.
-
-```ini
-# In afetch.conf
-REPO_OWNER="wwwfyl"
-REPO_NAME="asset-fetch"
-ASSET_MASK="*_linux_x86_64.tar.gz"
-```
-
-Running `./afetch` will now immediately show all assets from `wwwfyl/asset-fetch` that match the `*_linux_x86_64.tar.gz` pattern, grouped by release.
-
-### Manual Release Selection
-
-Leave `ASSET_MASK` empty in `afetch.conf` to browse releases interactively.
-
-```ini
-# In afetch.conf
-REPO_OWNER="wwwfyl"
-REPO_NAME="asset-fetch"
-# ASSET_MASK is not set
-```
-
-Running `./afetch` will first show a list of releases for `wwwfyl/asset-fetch`. After you select one, it will show all assets for that release.
+See [afetch.yaml.unix.example](afetch.yaml.unix.example) and [afetch.yaml.windows.example](afetch.yaml.windows.example) for complete, runnable templates.

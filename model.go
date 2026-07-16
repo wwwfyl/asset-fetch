@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"strings"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -488,13 +487,13 @@ func (m model) openAppReleases(idx int) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	app := m.apps[idx]
-	parts := strings.SplitN(app.Repo, "/", 2)
-	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+	owner, name, ok := splitRepo(app.Repo)
+	if !ok {
 		m.errorMsg = "invalid repo: " + app.Repo
 		return m, nil
 	}
-	m.repoOwner = parts[0]
-	m.repoName = parts[1]
+	m.repoOwner = owner
+	m.repoName = name
 	m.tag = ""
 	m.startWithReleases = true
 	if app.AssetMask != "" {

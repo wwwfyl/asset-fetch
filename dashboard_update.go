@@ -7,7 +7,6 @@ import (
 	"os"
 	"path"
 	"path/filepath"
-	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -33,8 +32,8 @@ func startAppUpdate(ctx context.Context, idx int, app AppConfig, globalToken str
 func doUpdate(ctx context.Context, app AppConfig, globalToken string) error {
 	log.Printf("update[%s]: starting, repo=%s release_type=%q asset_mask=%q", app.Name, app.Repo, app.ReleaseType, app.AssetMask)
 
-	parts := strings.SplitN(app.Repo, "/", 2)
-	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+	owner, name, ok := splitRepo(app.Repo)
+	if !ok {
 		return fmt.Errorf("invalid repo: %s", app.Repo)
 	}
 	if app.AssetMask == "" {
@@ -44,7 +43,7 @@ func doUpdate(ctx context.Context, app AppConfig, globalToken string) error {
 	token := tokenForApp(app, globalToken)
 	log.Printf("update[%s]: tokenSet=%v (per-app=%v)", app.Name, token != "", app.GitHubToken != "")
 
-	releases, err := fetchReleasesFromGitHub(ctx, parts[0], parts[1], "", token)
+	releases, err := fetchReleasesFromGitHub(ctx, owner, name, "", token)
 	if err != nil {
 		log.Printf("update[%s]: fetch releases failed: %v", app.Name, err)
 		return err

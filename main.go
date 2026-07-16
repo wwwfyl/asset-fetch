@@ -113,10 +113,9 @@ func main() {
 		loading = true
 	case singleFilterApp:
 		app := apps[0]
-		parts := strings.SplitN(app.Repo, "/", 2)
-		if len(parts) == 2 && parts[0] != "" && parts[1] != "" {
-			repoOwner = parts[0]
-			repoName = parts[1]
+		if owner, name, ok := splitRepo(app.Repo); ok {
+			repoOwner = owner
+			repoName = name
 			am := app.AssetMask
 			assetMask = &am
 			startWithReleases = false

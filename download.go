@@ -98,14 +98,7 @@ func fetchReleases(m model) tea.Cmd {
 
 		// Tag-specific fetch: expose assets from that single release directly.
 		if m.tag != "" {
-			release := releases[0]
-			var assets []AssetInfo
-			formatter := AssetFormatter{}
-			for _, asset := range release.Assets {
-				assetInfo := formatter.FormatAssetInfo(asset, release)
-				assetInfo.DisplayLine = formatter.createDisplayLineWithoutTag(asset.Name, assetInfo.SizeStr, assetInfo.FormattedDate)
-				assets = append(assets, assetInfo)
-			}
+			assets := AssetFormatter{}.BuildAssetInfos(releases[0])
 			return releasesMsg{assets: assets, releases: releases}
 		}
 

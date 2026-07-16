@@ -297,6 +297,18 @@ func (af AssetFormatter) FormatAssetInfo(asset Asset, release Release) AssetInfo
 	}
 }
 
+// BuildAssetInfos converts a release's assets into display-ready AssetInfo
+// entries, using the tag-less display line (the release is already known).
+func (af AssetFormatter) BuildAssetInfos(release Release) []AssetInfo {
+	var assets []AssetInfo
+	for _, asset := range release.Assets {
+		info := af.FormatAssetInfo(asset, release)
+		info.DisplayLine = af.createDisplayLineWithoutTag(asset.Name, info.SizeStr, info.FormattedDate)
+		assets = append(assets, info)
+	}
+	return assets
+}
+
 func (af AssetFormatter) createDisplayLine(name, sizeStr, formattedDate, releaseTag string) string {
 	if releaseTag != "" {
 		return fmt.Sprintf("[%s] %s (%s, %s)", releaseTag, name, sizeStr, formattedDate)

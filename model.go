@@ -337,13 +337,7 @@ func (m model) handleReleasesInput(key string) (tea.Model, tea.Cmd) {
 }
 
 func (m *model) selectRelease(selectedRelease *Release) {
-	var assets []AssetInfo
-	for _, asset := range selectedRelease.Assets {
-		assetInfo := m.assetFormatter.FormatAssetInfo(asset, *selectedRelease)
-		assetInfo.DisplayLine = m.assetFormatter.createDisplayLineWithoutTag(asset.Name, assetInfo.SizeStr, assetInfo.FormattedDate)
-		assets = append(assets, assetInfo)
-	}
-	m.listView.SetAssets(assets)
+	m.listView.SetAssets(m.assetFormatter.BuildAssetInfos(*selectedRelease))
 	m.state = StateAssets
 	m.fromReleasesView = true
 }

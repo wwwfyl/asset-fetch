@@ -284,28 +284,10 @@ func (m model) handleReleasesInput(key string) (tea.Model, tea.Cmd) {
 	maxItems := len(m.listView.filteredItems)
 
 	if m.listView.searchActive {
-		switch key {
-		case "esc":
-			m.listView.searchActive = false
-			m.listView.SetFilter("")
-		case "enter":
+		if !m.listView.HandleSearchKey(key) {
 			m.listView.searchActive = false
 			if selectedRelease := m.listView.GetCurrentRelease(); selectedRelease != nil {
 				m.selectRelease(selectedRelease)
-			}
-		case "up":
-			if m.listView.cursor > 0 {
-				m.listView.cursor--
-			}
-		case "down":
-			if m.listView.cursor < maxItems-1 {
-				m.listView.cursor++
-			}
-		case "backspace":
-			m.listView.BackspaceFilter()
-		default:
-			if len(key) == 1 {
-				m.listView.AddToFilter(key)
 			}
 		}
 		return m, nil
@@ -347,27 +329,9 @@ func (m model) handleAssetsInput(key string) (tea.Model, tea.Cmd) {
 	maxItems := len(m.listView.filteredItems)
 
 	if m.listView.searchActive {
-		switch key {
-		case "esc":
-			m.listView.searchActive = false
-			m.listView.SetFilter("")
-		case "enter":
+		if !m.listView.HandleSearchKey(key) {
 			m.listView.searchActive = false
 			return m.startDownload()
-		case "up":
-			if m.listView.cursor > 0 {
-				m.listView.cursor--
-			}
-		case "down":
-			if m.listView.cursor < maxItems-1 {
-				m.listView.cursor++
-			}
-		case "backspace":
-			m.listView.BackspaceFilter()
-		default:
-			if len(key) == 1 {
-				m.listView.AddToFilter(key)
-			}
 		}
 		return m, nil
 	}

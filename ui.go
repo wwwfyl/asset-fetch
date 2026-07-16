@@ -82,6 +82,34 @@ func (ulv *UnifiedListView) SetFilter(f string) {
 
 func (ulv *UnifiedListView) AddToFilter(ch string) { ulv.SetFilter(ulv.filter + ch) }
 
+// HandleSearchKey processes one key while search input is active: cursor
+// movement, filter editing and cancellation. Returns false for keys the
+// caller must handle itself (currently "enter").
+func (ulv *UnifiedListView) HandleSearchKey(key string) bool {
+	switch key {
+	case "enter":
+		return false
+	case "esc":
+		ulv.searchActive = false
+		ulv.SetFilter("")
+	case "up":
+		if ulv.cursor > 0 {
+			ulv.cursor--
+		}
+	case "down":
+		if ulv.cursor < len(ulv.filteredItems)-1 {
+			ulv.cursor++
+		}
+	case "backspace":
+		ulv.BackspaceFilter()
+	default:
+		if len(key) == 1 {
+			ulv.AddToFilter(key)
+		}
+	}
+	return true
+}
+
 func (ulv *UnifiedListView) ActivateSearch() { ulv.searchActive = true }
 
 func (ulv *UnifiedListView) BackspaceFilter() {

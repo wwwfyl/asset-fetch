@@ -2,9 +2,9 @@ package main
 
 import (
 	"context"
+	"errors"
 	"os/exec"
 	"regexp"
-	"strings"
 	"time"
 )
 
@@ -19,10 +19,12 @@ func normalizeVersion(tag string) string {
 	return tag
 }
 
-// getInstalledVersion runs cfg.Command and returns the first capture group of
-// cfg.Regex applied to the command's combined output. Returns "" when the
-// command is empty, fails to start, or the regex does not match. The command
-// has a 5-second timeout so dashboard refresh time is bounded.
+// getInstalledVersion runs cfg.Command through `sh -c` (same as install and
+// uninstall steps, so ~, quoting, env vars and pipes all work) and returns
+// the first capture group of cfg.Regex applied to the command's combined
+// output. Returns "" when the command is empty, not found, or the regex does
+// not match. The command has a 5-second timeout so dashboard refresh time is
+// bounded.
 func getInstalledVersion(cfg VersionConfig) string {
 	if cfg.Command == "" || cfg.Regex == "" {
 		return ""
@@ -33,15 +35,19 @@ func getInstalledVersion(cfg VersionConfig) string {
 		return ""
 	}
 
-	parts := strings.Fields(cfg.Command)
-	if len(parts) == 0 {
-		return ""
-	}
-
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	output, _ := exec.CommandContext(ctx, parts[0], parts[1:]...).CombinedOutput()
+	output, err := exec.CommandContext(ctx, "sh", "-c", cfg.Command).CombinedOutput()
+
+	// 127/126 = command not found / not executable: sh reports that on
+	// stderr, which a permissive regex would happily match.
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) {
+		if code := exitErr.ExitCode(); code == 126 || code == 127 {
+			return ""
+		}
+	}
 
 	m := re.FindSubmatch(output)
 	if len(m) < 2 {

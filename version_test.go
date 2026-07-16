@@ -33,6 +33,8 @@ func TestGetInstalledVersion(t *testing.T) {
 		{"no match", VersionConfig{Command: "echo hello", Regex: `version=([0-9.]+)`}, ""},
 		{"bad regex", VersionConfig{Command: "echo hi", Regex: `[`}, ""},
 		{"missing binary", VersionConfig{Command: "definitely_not_a_command_xyz", Regex: `(.+)`}, ""},
+		{"shell pipe", VersionConfig{Command: "echo version=9.9.9 | cat", Regex: `version=([0-9.]+)`}, "9.9.9"},
+		{"quoted arg", VersionConfig{Command: `printf '%s' "version=2.0 beta"`, Regex: `version=([0-9.]+)`}, "2.0"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

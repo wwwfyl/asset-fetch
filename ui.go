@@ -7,36 +7,14 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-// NavigationHandler handles common navigation keys
-type NavigationHandler struct {
-	cursor   *int
-	maxItems int
-}
-
-func (nh NavigationHandler) HandleKey(key string) bool {
-	switch key {
-	case "up", "k":
-		if *nh.cursor > 0 {
-			(*nh.cursor)--
-		}
-		return true
-	case "down", "j":
-		if *nh.cursor < nh.maxItems-1 {
-			(*nh.cursor)++
-		}
-		return true
-	}
-	return false
-}
-
 // UnifiedListView handles both releases and assets display
 type UnifiedListView struct {
-	items         []interface{}
-	cursor        int
-	selected      []bool
-	multiSelect   bool
-	title         string
-	instructions  string
+	items           []interface{}
+	cursor          int
+	selected        []bool
+	multiSelect     bool
+	title           string
+	instructions    string
 	filter          string
 	filteredItems   []interface{}
 	filteredIndices []int // original items index for each filteredItems entry; nil = 1:1
@@ -56,6 +34,7 @@ func (ulv *UnifiedListView) SetReleases(releases []Release) {
 	ulv.searchActive = false
 	ulv.filter = ""
 	ulv.filteredItems = ulv.items
+	ulv.filteredIndices = nil
 	ulv.title = "Select release:"
 	ulv.instructions = "Press '/' to search, '↑/↓' or 'j/k' to navigate, 'enter' to select, 'q' to quit"
 }
@@ -90,9 +69,9 @@ func (ulv *UnifiedListView) SetFilter(f string) {
 	for i, item := range ulv.items {
 		var matches bool
 		if r, ok := item.(Release); ok {
-			matches = fuzzyMatch(f, r.TagName) || fuzzyMatch(f, r.Name)
+			matches = substringMatch(f, r.TagName) || substringMatch(f, r.Name)
 		} else if a, ok := item.(AssetInfo); ok {
-			matches = fuzzyMatch(f, a.Name) || fuzzyMatch(f, a.ReleaseTag)
+			matches = substringMatch(f, a.Name) || substringMatch(f, a.ReleaseTag)
 		}
 		if matches {
 			ulv.filteredItems = append(ulv.filteredItems, item)
@@ -103,6 +82,34 @@ func (ulv *UnifiedListView) SetFilter(f string) {
 
 func (ulv *UnifiedListView) AddToFilter(ch string) { ulv.SetFilter(ulv.filter + ch) }
 
+// HandleSearchKey processes one key while search input is active: cursor
+// movement, filter editing and cancellation. Returns false for keys the
+// caller must handle itself (currently "enter").
+func (ulv *UnifiedListView) HandleSearchKey(key string) bool {
+	switch key {
+	case "enter":
+		return false
+	case "esc":
+		ulv.searchActive = false
+		ulv.SetFilter("")
+	case "up":
+		if ulv.cursor > 0 {
+			ulv.cursor--
+		}
+	case "down":
+		if ulv.cursor < len(ulv.filteredItems)-1 {
+			ulv.cursor++
+		}
+	case "backspace":
+		ulv.BackspaceFilter()
+	default:
+		if len(key) == 1 {
+			ulv.AddToFilter(key)
+		}
+	}
+	return true
+}
+
 func (ulv *UnifiedListView) ActivateSearch() { ulv.searchActive = true }
 
 func (ulv *UnifiedListView) BackspaceFilter() {
@@ -112,7 +119,7 @@ func (ulv *UnifiedListView) BackspaceFilter() {
 	}
 }
 
-func fuzzyMatch(pattern, text string) bool {
+func substringMatch(pattern, text string) bool {
 	return strings.Contains(strings.ToLower(text), strings.ToLower(pattern))
 }
 
@@ -308,18 +315,26 @@ func (af AssetFormatter) FormatAssetInfo(asset Asset, release Release) AssetInfo
 
 	return AssetInfo{
 		Name:          asset.Name,
-		ID:            asset.ID,
 		URL:           asset.URL,
-		DownloadURL:   asset.BrowserDownloadURL,
 		Size:          asset.Size,
-		CreatedAt:     asset.CreatedAt,
 		Digest:        asset.Digest,
 		ReleaseTag:    release.TagName,
-		ReleaseName:   release.Name,
 		FormattedDate: formattedDate,
 		SizeStr:       sizeStr,
 		DisplayLine:   af.createDisplayLine(asset.Name, sizeStr, formattedDate, release.TagName),
 	}
+}
+
+// BuildAssetInfos converts a release's assets into display-ready AssetInfo
+// entries, using the tag-less display line (the release is already known).
+func (af AssetFormatter) BuildAssetInfos(release Release) []AssetInfo {
+	var assets []AssetInfo
+	for _, asset := range release.Assets {
+		info := af.FormatAssetInfo(asset, release)
+		info.DisplayLine = af.createDisplayLineWithoutTag(asset.Name, info.SizeStr, info.FormattedDate)
+		assets = append(assets, info)
+	}
+	return assets
 }
 
 func (af AssetFormatter) createDisplayLine(name, sizeStr, formattedDate, releaseTag string) string {
@@ -333,10 +348,11 @@ func (af AssetFormatter) createDisplayLineWithoutTag(name, sizeStr, formattedDat
 	return fmt.Sprintf("%s (%s, %s)", name, sizeStr, formattedDate)
 }
 
-// truncateString truncates a string to the specified length and adds "..." if truncated
+// truncateString truncates a string to maxLen runes and adds "..." if truncated
 func truncateString(s string, maxLen int) string {
-	if len(s) <= maxLen {
+	r := []rune(s)
+	if len(r) <= maxLen {
 		return s
 	}
-	return s[:maxLen-3] + "..."
+	return string(r[:maxLen-3]) + "..."
 }

@@ -78,7 +78,7 @@ func downloadAsset(ctx context.Context, asset AssetInfo, token, destDir string, 
 			return downloadErrorMsg(fmt.Sprintf("Checksum verification failed for %s: %v", filePath, err))
 		}
 
-		return checksumVerifiedMsg{filename: filePath, success: true}
+		return downloadCompleteMsg{filename: filePath}
 	}
 }
 
@@ -98,23 +98,11 @@ func fetchReleases(m model) tea.Cmd {
 
 		// Tag-specific fetch: expose assets from that single release directly.
 		if m.tag != "" {
-			release := releases[0]
-			var assets []AssetInfo
-			formatter := AssetFormatter{}
-			for _, asset := range release.Assets {
-				assetInfo := formatter.FormatAssetInfo(asset, release)
-				assetInfo.DisplayLine = formatter.createDisplayLineWithoutTag(asset.Name, assetInfo.SizeStr, assetInfo.FormattedDate)
-				assets = append(assets, assetInfo)
-			}
+			assets := AssetFormatter{}.BuildAssetInfos(releases[0])
 			return releasesMsg{assets: assets, releases: releases}
 		}
 
-		assetMaskValue := ""
-		if m.assetMask != nil {
-			assetMaskValue = *m.assetMask
-		}
-
-		if assetMaskValue == "" || m.startWithReleases {
+		if m.assetMask == "" || m.startWithReleases {
 			return releasesMsg{releases: releases}
 		}
 
@@ -123,7 +111,7 @@ func fetchReleases(m model) tea.Cmd {
 		formatter := AssetFormatter{}
 		for _, release := range releases {
 			for _, asset := range release.Assets {
-				matched, err := path.Match(assetMaskValue, asset.Name)
+				matched, err := path.Match(m.assetMask, asset.Name)
 				if err != nil || !matched {
 					continue
 				}

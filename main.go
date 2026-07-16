@@ -25,8 +25,7 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	var repoOwner, repoName, tag string
-	var assetMask *string
+	var repoOwner, repoName, tag, assetMask string
 	var startWithReleases bool
 	var debug bool
 
@@ -37,7 +36,7 @@ func main() {
 		case "--debug":
 			debug = true
 		case "--version", "-v":
-			fmt.Printf("afetch version %s\n", version)
+			fmt.Printf("afetch version %s (commit %s, built %s, %s)\n", version, commit, date, buildSource)
 			os.Exit(0)
 		default:
 			args = append(args, a)
@@ -67,8 +66,6 @@ func main() {
 					repoName = pathParts[1]
 					if len(pathParts) > 4 && pathParts[2] == "releases" && pathParts[3] == "tag" {
 						tag = pathParts[4]
-						emptyString := ""
-						assetMask = &emptyString
 						startWithReleases = false
 					} else {
 						startWithReleases = true
@@ -113,12 +110,10 @@ func main() {
 		loading = true
 	case singleFilterApp:
 		app := apps[0]
-		parts := strings.SplitN(app.Repo, "/", 2)
-		if len(parts) == 2 && parts[0] != "" && parts[1] != "" {
-			repoOwner = parts[0]
-			repoName = parts[1]
-			am := app.AssetMask
-			assetMask = &am
+		if owner, name, ok := splitRepo(app.Repo); ok {
+			repoOwner = owner
+			repoName = name
+			assetMask = app.AssetMask
 			startWithReleases = false
 			gitHubToken = tokenForApp(app, globalToken)
 			loading = true

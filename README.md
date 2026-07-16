@@ -142,7 +142,7 @@ version:
   regex: 'afetch version (\S+)'
 ```
 
-`command` is run; the first capture group of `regex` becomes the installed version compared against the GitHub release tag (with a leading `v` stripped).
+`command` is executed through `sh -c`, same as install/uninstall steps — `~`, environment variables, quoting, and pipes all work (e.g. `command: ~/bin/tool --version`). The first capture group of `regex` applied to the command's combined output becomes the installed version, compared against the GitHub release tag (with a leading `v` stripped).
 
 ### `install` and `uninstall` steps
 

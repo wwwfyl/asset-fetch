@@ -7,22 +7,20 @@ import (
 	"os"
 	"path"
 	"path/filepath"
-	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
 )
 
 // startAppUpdate runs the full update pipeline (fetch → download → unpack →
 // install) for the app at idx in a background goroutine and emits an
-// updateCompleteMsg with the outcome.
+// tileOpCompleteMsg with the outcome.
 func startAppUpdate(ctx context.Context, idx int, app AppConfig, globalToken string) tea.Cmd {
 	return func() tea.Msg {
-		msg := updateCompleteMsg{index: idx}
+		msg := tileOpCompleteMsg{index: idx}
 		if err := doUpdate(ctx, app, globalToken); err != nil {
 			msg.err = err.Error()
 			return msg
 		}
-		msg.succeeded = true
 		msg.newInstalled = getInstalledVersion(app.Version)
 		return msg
 	}
@@ -34,8 +32,8 @@ func startAppUpdate(ctx context.Context, idx int, app AppConfig, globalToken str
 func doUpdate(ctx context.Context, app AppConfig, globalToken string) error {
 	log.Printf("update[%s]: starting, repo=%s release_type=%q asset_mask=%q", app.Name, app.Repo, app.ReleaseType, app.AssetMask)
 
-	parts := strings.SplitN(app.Repo, "/", 2)
-	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+	owner, name, ok := splitRepo(app.Repo)
+	if !ok {
 		return fmt.Errorf("invalid repo: %s", app.Repo)
 	}
 	if app.AssetMask == "" {
@@ -45,7 +43,7 @@ func doUpdate(ctx context.Context, app AppConfig, globalToken string) error {
 	token := tokenForApp(app, globalToken)
 	log.Printf("update[%s]: tokenSet=%v (per-app=%v)", app.Name, token != "", app.GitHubToken != "")
 
-	releases, err := fetchReleasesFromGitHub(ctx, parts[0], parts[1], "", token)
+	releases, err := fetchReleasesFromGitHub(ctx, owner, name, "", token)
 	if err != nil {
 		log.Printf("update[%s]: fetch releases failed: %v", app.Name, err)
 		return err
@@ -80,19 +78,11 @@ func doUpdate(ctx context.Context, app AppConfig, globalToken string) error {
 	case downloadErrorMsg:
 		log.Printf("update[%s]: download failed: %s", app.Name, string(m))
 		return fmt.Errorf("download: %s", string(m))
-	case checksumVerifiedMsg:
-		if !m.success {
-			log.Printf("update[%s]: checksum failed: %s", app.Name, m.err)
-			return fmt.Errorf("download: %s", m.err)
-		}
+	case downloadCompleteMsg:
 		log.Printf("update[%s]: downloaded to %s", app.Name, m.filename)
 	}
 
-	installDir := app.InstallDir
-	if installDir == "" {
-		installDir = defaultInstallDir()
-	}
-	installDir = expandHome(installDir)
+	installDir := resolveInstallDir(app)
 	if err := os.MkdirAll(installDir, 0755); err != nil {
 		return fmt.Errorf("create install dir %s: %w", installDir, err)
 	}

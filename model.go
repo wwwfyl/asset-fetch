@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"strings"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -40,7 +39,7 @@ type model struct {
 	repoOwner         string
 	repoName          string
 	tag               string
-	assetMask         *string
+	assetMask         string
 	startWithReleases bool
 
 	// Download lifecycle (per-model, not global)
@@ -91,8 +90,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = msg.Width
 		return m, nil
 	case tea.KeyMsg:
-		switch msg.String() {
-		case "ctrl+c", "q":
+		key := msg.String()
+		// While search input is active, "q" is a literal filter character,
+		// not the quit/back key.
+		searchTyping := key == "q" && m.listView.searchActive &&
+			(m.state == StateReleases || m.state == StateAssets)
+		if (key == "ctrl+c" || key == "q") && !searchTyping {
 			if m.downloading {
 				if m.downloadCancel != nil {
 					m.downloadCancel()
@@ -115,6 +118,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			} else if m.state == StateDashboard && m.confirmUninstall {
 				m.confirmUninstall = false
 				return m, nil
+			} else if key == "q" && m.state == StateDashboard && anyTileBusy(m.tiles) {
+				// Quitting now would kill install/uninstall shell steps
+				// mid-way and could leave an app half-installed; ctrl+c
+				// stays as the emergency exit.
+				return m, nil
 			} else {
 				m.quitting = true
 				return m, tea.Quit
@@ -124,11 +132,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Handle state-specific navigation and actions
 		switch m.state {
 		case StateDashboard:
-			return m.handleDashboardInput(msg.String())
+			return m.handleDashboardInput(key)
 		case StateReleases:
-			return m.handleReleasesInput(msg.String())
+			return m.handleReleasesInput(key)
 		case StateAssets:
-			return m.handleAssetsInput(msg.String())
+			return m.handleAssetsInput(key)
 		case StateDownloading, StateFinished:
 			// No input handling during download states
 			return m, nil
@@ -170,20 +178,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 
-	case updateCompleteMsg:
-		if msg.index >= 0 && msg.index < len(m.tiles) {
-			t := &m.tiles[msg.index]
-			if msg.err != "" {
-				t.Status = TileStatusError
-				t.Err = msg.err
-			} else {
-				t.Status = TileStatusReady
-				t.InstalledVersion = msg.newInstalled
-				t.Err = ""
-			}
-		}
-
-	case uninstallCompleteMsg:
+	case tileOpCompleteMsg:
 		if msg.index >= 0 && msg.index < len(m.tiles) {
 			t := &m.tiles[msg.index]
 			if msg.err != "" {
@@ -242,11 +237,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 	case cancelDownloadMsg:
+		// The shared download context is cancelled for good, so downloads
+		// cannot be retried in this session — exit instead of stranding the
+		// user on a dead screen. main() prints the cancellation notice.
 		m.downloading = false
-		m.errorMsg = "Download cancelled by user"
-		m.state = StateAssets
+		m.quitting = true
+		return m, tea.Quit
 
-	case checksumVerifiedMsg:
+	case downloadCompleteMsg:
 		m.downloading = false
 
 		// Get actual file size from filesystem for completed download
@@ -258,35 +256,24 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Mark current download as completed with actual file size
 		m.downloadQueue.CompleteCurrentDownload(actualSize)
 
-		// Handle checksum verification result
-		if msg.success {
-			if m.downloadQueue.NextDownload() {
-				asset := m.downloadQueue.GetCurrent()
-				m.currentProgress = &ProgressState{}
-				return m, tea.Batch(
-					func() tea.Msg {
-						return startDownloadProgressMsg{asset: *asset}
-					},
-					downloadAsset(m.downloadCtx, *asset, m.gitHubToken, m.downloadDir, m.currentProgress),
-				)
-			} else {
-				// All downloads completed
-				m.downloadFinished = true
-				m.downloadSuccess = true
-				m.downloadResult = "All files downloaded and verified successfully"
-				m.state = StateFinished
-				// Exit after showing results
-				return m, tea.Quit
-			}
-		} else {
-			// Checksum verification failed
-			m.downloadFinished = true
-			m.downloadSuccess = false
-			m.downloadResult = fmt.Sprintf("Checksum verification failed for %s: %s", msg.filename, msg.err)
-			m.state = StateFinished
-			// Exit after showing results
-			return m, tea.Quit
+		if m.downloadQueue.NextDownload() {
+			asset := m.downloadQueue.GetCurrent()
+			m.currentProgress = &ProgressState{}
+			return m, tea.Batch(
+				func() tea.Msg {
+					return startDownloadProgressMsg{asset: *asset}
+				},
+				downloadAsset(m.downloadCtx, *asset, m.gitHubToken, m.downloadDir, m.currentProgress),
+			)
 		}
+
+		// All downloads completed
+		m.downloadFinished = true
+		m.downloadSuccess = true
+		m.downloadResult = "All files downloaded and verified successfully"
+		m.state = StateFinished
+		// Exit after showing results
+		return m, tea.Quit
 	}
 
 	return m, nil
@@ -297,28 +284,10 @@ func (m model) handleReleasesInput(key string) (tea.Model, tea.Cmd) {
 	maxItems := len(m.listView.filteredItems)
 
 	if m.listView.searchActive {
-		switch key {
-		case "esc":
-			m.listView.searchActive = false
-			m.listView.SetFilter("")
-		case "enter":
+		if !m.listView.HandleSearchKey(key) {
 			m.listView.searchActive = false
 			if selectedRelease := m.listView.GetCurrentRelease(); selectedRelease != nil {
 				m.selectRelease(selectedRelease)
-			}
-		case "up":
-			if m.listView.cursor > 0 {
-				m.listView.cursor--
-			}
-		case "down":
-			if m.listView.cursor < maxItems-1 {
-				m.listView.cursor++
-			}
-		case "backspace":
-			m.listView.BackspaceFilter()
-		default:
-			if len(key) == 1 {
-				m.listView.AddToFilter(key)
 			}
 		}
 		return m, nil
@@ -350,13 +319,7 @@ func (m model) handleReleasesInput(key string) (tea.Model, tea.Cmd) {
 }
 
 func (m *model) selectRelease(selectedRelease *Release) {
-	var assets []AssetInfo
-	for _, asset := range selectedRelease.Assets {
-		assetInfo := m.assetFormatter.FormatAssetInfo(asset, *selectedRelease)
-		assetInfo.DisplayLine = m.assetFormatter.createDisplayLineWithoutTag(asset.Name, assetInfo.SizeStr, assetInfo.FormattedDate)
-		assets = append(assets, assetInfo)
-	}
-	m.listView.SetAssets(assets)
+	m.listView.SetAssets(m.assetFormatter.BuildAssetInfos(*selectedRelease))
 	m.state = StateAssets
 	m.fromReleasesView = true
 }
@@ -366,27 +329,9 @@ func (m model) handleAssetsInput(key string) (tea.Model, tea.Cmd) {
 	maxItems := len(m.listView.filteredItems)
 
 	if m.listView.searchActive {
-		switch key {
-		case "esc":
-			m.listView.searchActive = false
-			m.listView.SetFilter("")
-		case "enter":
+		if !m.listView.HandleSearchKey(key) {
 			m.listView.searchActive = false
 			return m.startDownload()
-		case "up":
-			if m.listView.cursor > 0 {
-				m.listView.cursor--
-			}
-		case "down":
-			if m.listView.cursor < maxItems-1 {
-				m.listView.cursor++
-			}
-		case "backspace":
-			m.listView.BackspaceFilter()
-		default:
-			if len(key) == 1 {
-				m.listView.AddToFilter(key)
-			}
 		}
 		return m, nil
 	}
@@ -500,21 +445,16 @@ func (m model) openAppReleases(idx int) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	app := m.apps[idx]
-	parts := strings.SplitN(app.Repo, "/", 2)
-	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+	owner, name, ok := splitRepo(app.Repo)
+	if !ok {
 		m.errorMsg = "invalid repo: " + app.Repo
 		return m, nil
 	}
-	m.repoOwner = parts[0]
-	m.repoName = parts[1]
+	m.repoOwner = owner
+	m.repoName = name
 	m.tag = ""
 	m.startWithReleases = true
-	if app.AssetMask != "" {
-		am := app.AssetMask
-		m.assetMask = &am
-	} else {
-		m.assetMask = nil
-	}
+	m.assetMask = app.AssetMask
 	m.gitHubToken = tokenForApp(app, m.globalToken)
 	m.fromDashboard = true
 	m.loading = true

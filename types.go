@@ -84,13 +84,11 @@ type InstallStep struct {
 
 // Asset structure for storing artifact information
 type Asset struct {
-	ID                 int    `json:"id"`
-	Name               string `json:"name"`
-	URL                string `json:"url"`
-	BrowserDownloadURL string `json:"browser_download_url"`
-	Size               int64  `json:"size"`
-	CreatedAt          string `json:"created_at"`
-	Digest             string `json:"digest"`
+	Name      string `json:"name"`
+	URL       string `json:"url"`
+	Size      int64  `json:"size"`
+	CreatedAt string `json:"created_at"`
+	Digest    string `json:"digest"`
 }
 
 // Release structure for storing release information
@@ -104,14 +102,10 @@ type Release struct {
 // AssetInfo structure for storing artifact information
 type AssetInfo struct {
 	Name          string
-	ID            int
 	URL           string
-	DownloadURL   string
 	Size          int64
-	CreatedAt     string
 	Digest        string
 	ReleaseTag    string
-	ReleaseName   string
 	FormattedDate string
 	SizeStr       string
 	DisplayLine   string
@@ -256,11 +250,10 @@ type releasesMsg releasesData
 type downloadErrorMsg string
 type cancelDownloadMsg struct{}
 
-// checksumVerifiedMsg message to indicate checksum verification result
-type checksumVerifiedMsg struct {
+// downloadCompleteMsg signals that one asset finished downloading and passed
+// checksum verification (failures arrive as downloadErrorMsg).
+type downloadCompleteMsg struct {
 	filename string
-	success  bool
-	err      string
 }
 
 // startDownloadProgressMsg message to start download progress updates
@@ -281,18 +274,10 @@ type tileUpdatedMsg struct {
 	err              string
 }
 
-// updateCompleteMsg signals that the update pipeline finished for one tile.
-type updateCompleteMsg struct {
+// tileOpCompleteMsg signals that an update or uninstall pipeline finished
+// for one tile.
+type tileOpCompleteMsg struct {
 	index        int
-	succeeded    bool
-	newInstalled string
-	err          string
-}
-
-// uninstallCompleteMsg signals that the uninstall pipeline finished for one tile.
-type uninstallCompleteMsg struct {
-	index        int
-	succeeded    bool
 	newInstalled string
 	err          string
 }

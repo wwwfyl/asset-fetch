@@ -2,6 +2,13 @@ package main
 
 import "strings"
 
+// splitRepo splits an "owner/repo" string, reporting ok=false when either
+// part is missing.
+func splitRepo(repo string) (owner, name string, ok bool) {
+	owner, name, found := strings.Cut(repo, "/")
+	return owner, name, found && owner != "" && name != ""
+}
+
 // tokenForApp returns the app's per-app GitHub token if set, otherwise the
 // global token. This is the canonical "per-app token with global fallback"
 // resolution used everywhere a single app is in scope.

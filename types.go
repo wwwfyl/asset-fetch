@@ -256,11 +256,10 @@ type releasesMsg releasesData
 type downloadErrorMsg string
 type cancelDownloadMsg struct{}
 
-// checksumVerifiedMsg message to indicate checksum verification result
-type checksumVerifiedMsg struct {
+// downloadCompleteMsg signals that one asset finished downloading and passed
+// checksum verification (failures arrive as downloadErrorMsg).
+type downloadCompleteMsg struct {
 	filename string
-	success  bool
-	err      string
 }
 
 // startDownloadProgressMsg message to start download progress updates

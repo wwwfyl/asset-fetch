@@ -78,7 +78,7 @@ func downloadAsset(ctx context.Context, asset AssetInfo, token, destDir string, 
 			return downloadErrorMsg(fmt.Sprintf("Checksum verification failed for %s: %v", filePath, err))
 		}
 
-		return checksumVerifiedMsg{filename: filePath, success: true}
+		return downloadCompleteMsg{filename: filePath}
 	}
 }
 

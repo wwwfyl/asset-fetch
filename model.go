@@ -258,7 +258,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.quitting = true
 		return m, tea.Quit
 
-	case checksumVerifiedMsg:
+	case downloadCompleteMsg:
 		m.downloading = false
 
 		// Get actual file size from filesystem for completed download
@@ -270,35 +270,24 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Mark current download as completed with actual file size
 		m.downloadQueue.CompleteCurrentDownload(actualSize)
 
-		// Handle checksum verification result
-		if msg.success {
-			if m.downloadQueue.NextDownload() {
-				asset := m.downloadQueue.GetCurrent()
-				m.currentProgress = &ProgressState{}
-				return m, tea.Batch(
-					func() tea.Msg {
-						return startDownloadProgressMsg{asset: *asset}
-					},
-					downloadAsset(m.downloadCtx, *asset, m.gitHubToken, m.downloadDir, m.currentProgress),
-				)
-			} else {
-				// All downloads completed
-				m.downloadFinished = true
-				m.downloadSuccess = true
-				m.downloadResult = "All files downloaded and verified successfully"
-				m.state = StateFinished
-				// Exit after showing results
-				return m, tea.Quit
-			}
-		} else {
-			// Checksum verification failed
-			m.downloadFinished = true
-			m.downloadSuccess = false
-			m.downloadResult = fmt.Sprintf("Checksum verification failed for %s: %s", msg.filename, msg.err)
-			m.state = StateFinished
-			// Exit after showing results
-			return m, tea.Quit
+		if m.downloadQueue.NextDownload() {
+			asset := m.downloadQueue.GetCurrent()
+			m.currentProgress = &ProgressState{}
+			return m, tea.Batch(
+				func() tea.Msg {
+					return startDownloadProgressMsg{asset: *asset}
+				},
+				downloadAsset(m.downloadCtx, *asset, m.gitHubToken, m.downloadDir, m.currentProgress),
+			)
 		}
+
+		// All downloads completed
+		m.downloadFinished = true
+		m.downloadSuccess = true
+		m.downloadResult = "All files downloaded and verified successfully"
+		m.state = StateFinished
+		// Exit after showing results
+		return m, tea.Quit
 	}
 
 	return m, nil

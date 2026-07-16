@@ -80,11 +80,7 @@ func doUpdate(ctx context.Context, app AppConfig, globalToken string) error {
 	case downloadErrorMsg:
 		log.Printf("update[%s]: download failed: %s", app.Name, string(m))
 		return fmt.Errorf("download: %s", string(m))
-	case checksumVerifiedMsg:
-		if !m.success {
-			log.Printf("update[%s]: checksum failed: %s", app.Name, m.err)
-			return fmt.Errorf("download: %s", m.err)
-		}
+	case downloadCompleteMsg:
 		log.Printf("update[%s]: downloaded to %s", app.Name, m.filename)
 	}
 

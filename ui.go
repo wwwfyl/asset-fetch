@@ -7,28 +7,6 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-// NavigationHandler handles common navigation keys
-type NavigationHandler struct {
-	cursor   *int
-	maxItems int
-}
-
-func (nh NavigationHandler) HandleKey(key string) bool {
-	switch key {
-	case "up", "k":
-		if *nh.cursor > 0 {
-			(*nh.cursor)--
-		}
-		return true
-	case "down", "j":
-		if *nh.cursor < nh.maxItems-1 {
-			(*nh.cursor)++
-		}
-		return true
-	}
-	return false
-}
-
 // UnifiedListView handles both releases and assets display
 type UnifiedListView struct {
 	items           []interface{}

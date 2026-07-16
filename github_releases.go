@@ -6,7 +6,13 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"time"
 )
+
+// apiClient bounds GitHub API calls so a stalled network cannot leave
+// dashboard tiles loading forever. Asset downloads keep http.DefaultClient:
+// a whole-request timeout would kill legitimately long transfers.
+var apiClient = &http.Client{Timeout: 30 * time.Second}
 
 // fetchReleasesFromGitHub returns releases from the GitHub REST API for the given repo.
 // If tag is non-empty, only that release is fetched and returned as a single-element slice.
@@ -28,7 +34,7 @@ func fetchReleasesFromGitHub(ctx context.Context, owner, repo, tag, token string
 	}
 	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := apiClient.Do(req)
 	if err != nil {
 		return nil, err
 	}

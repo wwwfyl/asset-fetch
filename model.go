@@ -119,6 +119,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			} else if m.state == StateDashboard && m.confirmUninstall {
 				m.confirmUninstall = false
 				return m, nil
+			} else if key == "q" && m.state == StateDashboard && anyTileBusy(m.tiles) {
+				// Quitting now would kill install/uninstall shell steps
+				// mid-way and could leave an app half-installed; ctrl+c
+				// stays as the emergency exit.
+				return m, nil
 			} else {
 				m.quitting = true
 				return m, tea.Quit

@@ -58,7 +58,20 @@ func dashboardBarText(m model) string {
 	if m.confirmUninstall && m.selectedTile >= 0 && m.selectedTile < len(m.tiles) {
 		return confirmPromptStyle.Render("Uninstall " + m.tiles[m.selectedTile].Name + "? [y/N]")
 	}
+	if anyTileBusy(m.tiles) {
+		return "Tab/←/→ navigate · operation in progress… · ctrl+c force quit"
+	}
 	return "Tab/←/→ navigate · u update · d uninstall · Enter releases · q quit"
+}
+
+// anyTileBusy reports whether any tile has an update or uninstall in flight.
+func anyTileBusy(tiles []TileInfo) bool {
+	for _, t := range tiles {
+		if t.Status == TileStatusUpdating || t.Status == TileStatusUninstalling {
+			return true
+		}
+	}
+	return false
 }
 
 // renderTile renders one card. selected toggles the accent border.

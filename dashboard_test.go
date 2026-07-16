@@ -117,6 +117,22 @@ func TestHandleDashboardInputConfirmFlow(t *testing.T) {
 	}
 }
 
+func TestQuitIgnoredWhileTileBusy(t *testing.T) {
+	m := model{
+		state: StateDashboard,
+		tiles: []TileInfo{{Name: "a", Status: TileStatusUpdating}},
+		apps:  []AppConfig{{Name: "a"}},
+	}
+
+	out, cmd := m.Update(keyMsg("q"))
+	if out.(model).quitting || cmd != nil {
+		t.Error("q must be ignored while an update is running")
+	}
+	if !strings.Contains(renderDashboard(m), "operation in progress") {
+		t.Error("status bar should mention the running operation")
+	}
+}
+
 func TestOpenAppReleasesPopulatesModel(t *testing.T) {
 	m := model{
 		apps: []AppConfig{

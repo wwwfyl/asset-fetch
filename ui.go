@@ -333,10 +333,11 @@ func (af AssetFormatter) createDisplayLineWithoutTag(name, sizeStr, formattedDat
 	return fmt.Sprintf("%s (%s, %s)", name, sizeStr, formattedDate)
 }
 
-// truncateString truncates a string to the specified length and adds "..." if truncated
+// truncateString truncates a string to maxLen runes and adds "..." if truncated
 func truncateString(s string, maxLen int) string {
-	if len(s) <= maxLen {
+	r := []rune(s)
+	if len(r) <= maxLen {
 		return s
 	}
-	return s[:maxLen-3] + "..."
+	return string(r[:maxLen-3]) + "..."
 }

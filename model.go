@@ -246,9 +246,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 	case cancelDownloadMsg:
+		// The shared download context is cancelled for good, so downloads
+		// cannot be retried in this session — exit instead of stranding the
+		// user on a dead screen. main() prints the cancellation notice.
 		m.downloading = false
-		m.errorMsg = "Download cancelled by user"
-		m.state = StateAssets
+		m.quitting = true
+		return m, tea.Quit
 
 	case checksumVerifiedMsg:
 		m.downloading = false

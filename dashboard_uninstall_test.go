@@ -96,7 +96,7 @@ func TestUninstallCompleteMsgHandler(t *testing.T) {
 		tiles: []TileInfo{{Name: "x", Status: TileStatusUninstalling, InstalledVersion: "v1"}},
 	}
 
-	out, _ := m.Update(uninstallCompleteMsg{index: 0, succeeded: true, newInstalled: ""})
+	out, _ := m.Update(uninstallCompleteMsg{index: 0, newInstalled: ""})
 	r := out.(model)
 	if r.tiles[0].Status != TileStatusReady {
 		t.Errorf("status = %v, want ready", r.tiles[0].Status)

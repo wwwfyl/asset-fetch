@@ -95,7 +95,7 @@ func TestUpdateCompleteMsgHandler(t *testing.T) {
 	}
 
 	// Success path updates installed and clears the status.
-	out, _ := m.Update(updateCompleteMsg{index: 0, succeeded: true, newInstalled: "v2"})
+	out, _ := m.Update(updateCompleteMsg{index: 0, newInstalled: "v2"})
 	r := out.(model)
 	if r.tiles[0].Status != TileStatusReady {
 		t.Errorf("status = %v, want ready", r.tiles[0].Status)

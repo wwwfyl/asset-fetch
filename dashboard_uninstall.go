@@ -16,7 +16,6 @@ func startAppUninstall(idx int, app AppConfig) tea.Cmd {
 			msg.err = err.Error()
 			return msg
 		}
-		msg.succeeded = true
 		// After a successful uninstall the version probe should now return ""
 		// (binary removed), which is exactly what we want on the tile.
 		msg.newInstalled = getInstalledVersion(app.Version)

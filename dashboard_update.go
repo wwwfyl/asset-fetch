@@ -22,7 +22,6 @@ func startAppUpdate(ctx context.Context, idx int, app AppConfig, globalToken str
 			msg.err = err.Error()
 			return msg
 		}
-		msg.succeeded = true
 		msg.newInstalled = getInstalledVersion(app.Version)
 		return msg
 	}

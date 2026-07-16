@@ -287,14 +287,10 @@ func (af AssetFormatter) FormatAssetInfo(asset Asset, release Release) AssetInfo
 
 	return AssetInfo{
 		Name:          asset.Name,
-		ID:            asset.ID,
 		URL:           asset.URL,
-		DownloadURL:   asset.BrowserDownloadURL,
 		Size:          asset.Size,
-		CreatedAt:     asset.CreatedAt,
 		Digest:        asset.Digest,
 		ReleaseTag:    release.TagName,
-		ReleaseName:   release.Name,
 		FormattedDate: formattedDate,
 		SizeStr:       sizeStr,
 		DisplayLine:   af.createDisplayLine(asset.Name, sizeStr, formattedDate, release.TagName),

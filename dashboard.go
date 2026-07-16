@@ -56,7 +56,7 @@ func renderDashboard(m model) string {
 // replaces the default key hints while it is active.
 func dashboardBarText(m model) string {
 	if m.confirmUninstall && m.selectedTile >= 0 && m.selectedTile < len(m.tiles) {
-		return confirmPromptStyle.Render("Uninstall "+m.tiles[m.selectedTile].Name+"? [y/N]")
+		return confirmPromptStyle.Render("Uninstall " + m.tiles[m.selectedTile].Name + "? [y/N]")
 	}
 	return "Tab/←/→ navigate · u update · d uninstall · Enter releases · q quit"
 }

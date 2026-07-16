@@ -31,12 +31,12 @@ func (nh NavigationHandler) HandleKey(key string) bool {
 
 // UnifiedListView handles both releases and assets display
 type UnifiedListView struct {
-	items         []interface{}
-	cursor        int
-	selected      []bool
-	multiSelect   bool
-	title         string
-	instructions  string
+	items           []interface{}
+	cursor          int
+	selected        []bool
+	multiSelect     bool
+	title           string
+	instructions    string
 	filter          string
 	filteredItems   []interface{}
 	filteredIndices []int // original items index for each filteredItems entry; nil = 1:1

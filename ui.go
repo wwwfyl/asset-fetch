@@ -56,6 +56,7 @@ func (ulv *UnifiedListView) SetReleases(releases []Release) {
 	ulv.searchActive = false
 	ulv.filter = ""
 	ulv.filteredItems = ulv.items
+	ulv.filteredIndices = nil
 	ulv.title = "Select release:"
 	ulv.instructions = "Press '/' to search, '↑/↓' or 'j/k' to navigate, 'enter' to select, 'q' to quit"
 }

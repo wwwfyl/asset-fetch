@@ -91,8 +91,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = msg.Width
 		return m, nil
 	case tea.KeyMsg:
-		switch msg.String() {
-		case "ctrl+c", "q":
+		key := msg.String()
+		// While search input is active, "q" is a literal filter character,
+		// not the quit/back key.
+		searchTyping := key == "q" && m.listView.searchActive &&
+			(m.state == StateReleases || m.state == StateAssets)
+		if (key == "ctrl+c" || key == "q") && !searchTyping {
 			if m.downloading {
 				if m.downloadCancel != nil {
 					m.downloadCancel()
@@ -124,11 +128,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Handle state-specific navigation and actions
 		switch m.state {
 		case StateDashboard:
-			return m.handleDashboardInput(msg.String())
+			return m.handleDashboardInput(key)
 		case StateReleases:
-			return m.handleReleasesInput(msg.String())
+			return m.handleReleasesInput(key)
 		case StateAssets:
-			return m.handleAssetsInput(msg.String())
+			return m.handleAssetsInput(key)
 		case StateDownloading, StateFinished:
 			// No input handling during download states
 			return m, nil

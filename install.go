@@ -41,6 +41,16 @@ func runSteps(steps []InstallStep, env map[string]string) error {
 	return nil
 }
 
+// resolveInstallDir returns the app's install directory: the configured one
+// (with ~ expanded) or the euid-based default.
+func resolveInstallDir(app AppConfig) string {
+	dir := app.InstallDir
+	if dir == "" {
+		dir = defaultInstallDir()
+	}
+	return expandHome(dir)
+}
+
 // defaultInstallDir returns the install directory used when an app omits one:
 // /usr/local/bin for root, $HOME/bin for any other user.
 func defaultInstallDir() string {

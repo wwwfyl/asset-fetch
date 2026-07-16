@@ -82,11 +82,7 @@ func doUpdate(ctx context.Context, app AppConfig, globalToken string) error {
 		log.Printf("update[%s]: downloaded to %s", app.Name, m.filename)
 	}
 
-	installDir := app.InstallDir
-	if installDir == "" {
-		installDir = defaultInstallDir()
-	}
-	installDir = expandHome(installDir)
+	installDir := resolveInstallDir(app)
 	if err := os.MkdirAll(installDir, 0755); err != nil {
 		return fmt.Errorf("create install dir %s: %w", installDir, err)
 	}

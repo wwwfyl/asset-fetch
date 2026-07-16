@@ -32,12 +32,7 @@ func doUninstall(app AppConfig) error {
 		log.Printf("uninstall[%s]: no steps configured", app.Name)
 		return fmt.Errorf("no uninstall steps configured")
 	}
-	installDir := app.InstallDir
-	if installDir == "" {
-		installDir = defaultInstallDir()
-	}
-	installDir = expandHome(installDir)
-
+	installDir := resolveInstallDir(app)
 	version := getInstalledVersion(app.Version)
 	log.Printf("uninstall[%s]: install_dir=%s version=%q running %d step(s)", app.Name, installDir, version, len(app.Uninstall.Steps))
 

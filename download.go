@@ -102,12 +102,7 @@ func fetchReleases(m model) tea.Cmd {
 			return releasesMsg{assets: assets, releases: releases}
 		}
 
-		assetMaskValue := ""
-		if m.assetMask != nil {
-			assetMaskValue = *m.assetMask
-		}
-
-		if assetMaskValue == "" || m.startWithReleases {
+		if m.assetMask == "" || m.startWithReleases {
 			return releasesMsg{releases: releases}
 		}
 
@@ -116,7 +111,7 @@ func fetchReleases(m model) tea.Cmd {
 		formatter := AssetFormatter{}
 		for _, release := range releases {
 			for _, asset := range release.Assets {
-				matched, err := path.Match(assetMaskValue, asset.Name)
+				matched, err := path.Match(m.assetMask, asset.Name)
 				if err != nil || !matched {
 					continue
 				}

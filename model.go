@@ -39,7 +39,7 @@ type model struct {
 	repoOwner         string
 	repoName          string
 	tag               string
-	assetMask         *string
+	assetMask         string
 	startWithReleases bool
 
 	// Download lifecycle (per-model, not global)
@@ -454,12 +454,7 @@ func (m model) openAppReleases(idx int) (tea.Model, tea.Cmd) {
 	m.repoName = name
 	m.tag = ""
 	m.startWithReleases = true
-	if app.AssetMask != "" {
-		am := app.AssetMask
-		m.assetMask = &am
-	} else {
-		m.assetMask = nil
-	}
+	m.assetMask = app.AssetMask
 	m.gitHubToken = tokenForApp(app, m.globalToken)
 	m.fromDashboard = true
 	m.loading = true

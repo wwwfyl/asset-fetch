@@ -25,8 +25,7 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	var repoOwner, repoName, tag string
-	var assetMask *string
+	var repoOwner, repoName, tag, assetMask string
 	var startWithReleases bool
 	var debug bool
 
@@ -67,8 +66,6 @@ func main() {
 					repoName = pathParts[1]
 					if len(pathParts) > 4 && pathParts[2] == "releases" && pathParts[3] == "tag" {
 						tag = pathParts[4]
-						emptyString := ""
-						assetMask = &emptyString
 						startWithReleases = false
 					} else {
 						startWithReleases = true
@@ -116,8 +113,7 @@ func main() {
 		if owner, name, ok := splitRepo(app.Repo); ok {
 			repoOwner = owner
 			repoName = name
-			am := app.AssetMask
-			assetMask = &am
+			assetMask = app.AssetMask
 			startWithReleases = false
 			gitHubToken = tokenForApp(app, globalToken)
 			loading = true

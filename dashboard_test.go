@@ -150,7 +150,7 @@ func TestOpenAppReleasesPopulatesModel(t *testing.T) {
 	if r.repoOwner != "jesseduffield" || r.repoName != "lazygit" {
 		t.Errorf("repo split: got %q/%q", r.repoOwner, r.repoName)
 	}
-	if r.assetMask == nil || *r.assetMask != "*linux_x86_64.tar.gz" {
+	if r.assetMask != "*linux_x86_64.tar.gz" {
 		t.Errorf("assetMask not set from app")
 	}
 	if r.gitHubToken != "per_app_token" {

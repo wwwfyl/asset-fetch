@@ -69,9 +69,9 @@ func (ulv *UnifiedListView) SetFilter(f string) {
 	for i, item := range ulv.items {
 		var matches bool
 		if r, ok := item.(Release); ok {
-			matches = fuzzyMatch(f, r.TagName) || fuzzyMatch(f, r.Name)
+			matches = substringMatch(f, r.TagName) || substringMatch(f, r.Name)
 		} else if a, ok := item.(AssetInfo); ok {
-			matches = fuzzyMatch(f, a.Name) || fuzzyMatch(f, a.ReleaseTag)
+			matches = substringMatch(f, a.Name) || substringMatch(f, a.ReleaseTag)
 		}
 		if matches {
 			ulv.filteredItems = append(ulv.filteredItems, item)
@@ -119,7 +119,7 @@ func (ulv *UnifiedListView) BackspaceFilter() {
 	}
 }
 
-func fuzzyMatch(pattern, text string) bool {
+func substringMatch(pattern, text string) bool {
 	return strings.Contains(strings.ToLower(text), strings.ToLower(pattern))
 }
 

@@ -36,7 +36,7 @@ func main() {
 		case "--debug":
 			debug = true
 		case "--version", "-v":
-			fmt.Printf("afetch version %s\n", version)
+			fmt.Printf("afetch version %s (commit %s, built %s, %s)\n", version, commit, date, buildSource)
 			os.Exit(0)
 		default:
 			args = append(args, a)

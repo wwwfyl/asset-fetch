@@ -274,15 +274,9 @@ type tileUpdatedMsg struct {
 	err              string
 }
 
-// updateCompleteMsg signals that the update pipeline finished for one tile.
-type updateCompleteMsg struct {
-	index        int
-	newInstalled string
-	err          string
-}
-
-// uninstallCompleteMsg signals that the uninstall pipeline finished for one tile.
-type uninstallCompleteMsg struct {
+// tileOpCompleteMsg signals that an update or uninstall pipeline finished
+// for one tile.
+type tileOpCompleteMsg struct {
 	index        int
 	newInstalled string
 	err          string

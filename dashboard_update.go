@@ -14,10 +14,10 @@ import (
 
 // startAppUpdate runs the full update pipeline (fetch → download → unpack →
 // install) for the app at idx in a background goroutine and emits an
-// updateCompleteMsg with the outcome.
+// tileOpCompleteMsg with the outcome.
 func startAppUpdate(ctx context.Context, idx int, app AppConfig, globalToken string) tea.Cmd {
 	return func() tea.Msg {
-		msg := updateCompleteMsg{index: idx}
+		msg := tileOpCompleteMsg{index: idx}
 		if err := doUpdate(ctx, app, globalToken); err != nil {
 			msg.err = err.Error()
 			return msg

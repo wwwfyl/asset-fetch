@@ -179,20 +179,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 
-	case updateCompleteMsg:
-		if msg.index >= 0 && msg.index < len(m.tiles) {
-			t := &m.tiles[msg.index]
-			if msg.err != "" {
-				t.Status = TileStatusError
-				t.Err = msg.err
-			} else {
-				t.Status = TileStatusReady
-				t.InstalledVersion = msg.newInstalled
-				t.Err = ""
-			}
-		}
-
-	case uninstallCompleteMsg:
+	case tileOpCompleteMsg:
 		if msg.index >= 0 && msg.index < len(m.tiles) {
 			t := &m.tiles[msg.index]
 			if msg.err != "" {

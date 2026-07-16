@@ -8,10 +8,10 @@ import (
 )
 
 // startAppUninstall runs the uninstall pipeline for the app at idx in a
-// background goroutine and emits an uninstallCompleteMsg with the outcome.
+// background goroutine and emits a tileOpCompleteMsg with the outcome.
 func startAppUninstall(idx int, app AppConfig) tea.Cmd {
 	return func() tea.Msg {
-		msg := uninstallCompleteMsg{index: idx}
+		msg := tileOpCompleteMsg{index: idx}
 		if err := doUninstall(app); err != nil {
 			msg.err = err.Error()
 			return msg

@@ -95,7 +95,7 @@ func TestUpdateCompleteMsgHandler(t *testing.T) {
 	}
 
 	// Success path updates installed and clears the status.
-	out, _ := m.Update(updateCompleteMsg{index: 0, newInstalled: "v2"})
+	out, _ := m.Update(tileOpCompleteMsg{index: 0, newInstalled: "v2"})
 	r := out.(model)
 	if r.tiles[0].Status != TileStatusReady {
 		t.Errorf("status = %v, want ready", r.tiles[0].Status)
@@ -106,7 +106,7 @@ func TestUpdateCompleteMsgHandler(t *testing.T) {
 
 	// Error path sets error status and message.
 	r.tiles[0].Status = TileStatusUpdating
-	out, _ = r.Update(updateCompleteMsg{index: 0, err: "boom"})
+	out, _ = r.Update(tileOpCompleteMsg{index: 0, err: "boom"})
 	r = out.(model)
 	if r.tiles[0].Status != TileStatusError {
 		t.Errorf("status = %v, want error", r.tiles[0].Status)
